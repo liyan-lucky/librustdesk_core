@@ -1,0 +1,13 @@
+[package]
+name = "rustdesk_harmony_bridge"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+crate-type = ["staticlib"]
+
+[dependencies]
+rustdesk_core = { package = "rustdesk", path = "../rustdesk-master", default-features = false, features = ["use_dasp"] }
+
+[patch."https://github.com/rustdesk-org/machine-uid"]
+machine-uid = { path = "../patches/machine-uid/381ff57" }
