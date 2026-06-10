@@ -132,6 +132,24 @@ jobs:
           & powershell -ExecutionPolicy Bypass -File .\scripts\build_native_bridge.ps1 -TargetTriple "$env:TARGET_TRIPLE" -Profile release
 
           if ($LASTEXITCODE -ne 0) {
+            Write-Host "==== Search libsodium config.log ===="
+            Get-ChildItem -Path "$env:RUSTDESK_HARMONY_BUILD_DIR" -Recurse -Filter config.log -ErrorAction SilentlyContinue | ForEach-Object {
+              Write-Host "==== CONFIG LOG: $($_.FullName) ===="
+              Get-Content $_.FullName -Tail 300
+            }
+
+            Write-Host "==== Search generated build scripts ===="
+            Get-ChildItem -Path "$env:RUSTDESK_HARMONY_BUILD_DIR" -Recurse -Filter build-libsodium.sh -ErrorAction SilentlyContinue | ForEach-Object {
+              Write-Host "==== BUILD SCRIPT: $($_.FullName) ===="
+              Get-Content $_.FullName
+            }
+
+            Write-Host "==== SDK bin files ===="
+            Get-ChildItem -Path "$env:RUSTDESK_HARMONY_HOST_SDK\native\llvm\bin" -ErrorAction SilentlyContinue | Select-Object Name,Length | Format-Table -AutoSize
+
+            Write-Host "==== SDK sysroot check ===="
+            Get-ChildItem -Path "$env:RUSTDESK_HARMONY_HOST_SDK\native\sysroot\usr" -ErrorAction SilentlyContinue | Select-Object Name | Format-Table -AutoSize
+
             throw "build_native_bridge.ps1 failed with exit code $LASTEXITCODE"
           }
 
