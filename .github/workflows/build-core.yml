@@ -10,55 +10,118 @@ on:
 jobs:
   build:
     name: Build core for HarmonyOS
-    runs-on: ubuntu-latest
-    timeout-minutes: 60
+    runs-on: windows-2022
+    timeout-minutes: 120
+
+    env:
+      TARGET_TRIPLE: aarch64-unknown-linux-ohos
+      RUSTDESK_HARMONY_BUILD_DIR: ${{ github.workspace }}\_build
+      CARGO_TARGET_DIR: ${{ github.workspace }}\_build\native_rust_core\target
+      VCPKG_ROOT: ${{ github.workspace }}\_build\vcpkg
+      VCPKG_INSTALLED_ROOT: ${{ github.workspace }}\_build\vcpkg\installed
+      RUST_BACKTRACE: full
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Install Rust toolchain
+      - name: Install Rust stable
         uses: dtolnay/rust-toolchain@stable
         with:
           targets: aarch64-unknown-linux-ohos
 
-      - name: Install OHOS cross-compile tools
-        shell: bash
-        run: |
-          sudo apt-get update && sudo apt-get install -y build-essential cmake ninja-build pkg-config libx11-dev libxfixes-dev libxrandr-dev libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev libgtk-3-dev libva-dev libvdpau-dev libasound2-dev libunwind-dev libclang-dev
+      - name: Install MSYS2
+        uses: msys2/setup-msys2@v2
+        with:
+          install: >-
+            base-devel
+            make
+            perl
+            autoconf
+            automake
+            libtool
+            pkgconf
 
-      - name: Cache Cargo registry
+      - name: Prepare build directories
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path "$env:RUSTDESK_HARMONY_BUILD_DIR" | Out-Null
+          New-Item -ItemType Directory -Force -Path "$env:VCPKG_ROOT" | Out-Null
+          New-Item -ItemType Directory -Force -Path "$env:VCPKG_INSTALLED_ROOT" | Out-Null
+
+      - name: Download OpenHarmony SDK
+        shell: pwsh
+        env:
+          OHOS_SDK_ZIP_URL: ${{ secrets.OHOS_SDK_ZIP_URL }}
+        run: |
+          if ([string]::IsNullOrWhiteSpace($env:OHOS_SDK_ZIP_URL)) {
+            throw "Missing repository secret: OHOS_SDK_ZIP_URL"
+          }
+
+          $zip = Join-Path $env:RUSTDESK_HARMONY_BUILD_DIR "ohos-sdk.zip"
+          $sdkRoot = Join-Path $env:RUSTDESK_HARMONY_BUILD_DIR "ohos-sdk"
+
+          Invoke-WebRequest -Uri $env:OHOS_SDK_ZIP_URL -OutFile $zip
+          New-Item -ItemType Directory -Force -Path $sdkRoot | Out-Null
+          Expand-Archive -Path $zip -DestinationPath $sdkRoot -Force
+
+          $clang = Get-ChildItem -Path $sdkRoot -Recurse -Filter clang.exe | Where-Object {
+            $_.FullName -like "*native*llvm*bin*clang.exe"
+          } | Select-Object -First 1
+
+          if (-not $clang) {
+            throw "clang.exe not found. SDK zip must contain native/llvm/bin/clang.exe"
+          }
+
+          $sdkNativeRoot = Split-Path -Parent (Split-Path -Parent (Split-Path -Parent $clang.FullName))
+
+          if (-not (Test-Path (Join-Path $sdkNativeRoot "native\sysroot"))) {
+            $candidate = Get-ChildItem -Path $sdkRoot -Recurse -Directory -Filter sysroot | Where-Object {
+              $_.FullName -like "*native*sysroot"
+            } | Select-Object -First 1
+
+            if (-not $candidate) {
+              throw "native/sysroot not found in SDK zip"
+            }
+
+            $sdkNativeRoot = Split-Path -Parent (Split-Path -Parent $candidate.FullName)
+          }
+
+          "RUSTDESK_HARMONY_HOST_SDK=$sdkNativeRoot" | Out-File -FilePath $env:GITHUB_ENV -Append
+          "OHOS_SDK_HOME=$sdkNativeRoot" | Out-File -FilePath $env:GITHUB_ENV -Append
+          "OHOS_NDK_HOME=$sdkNativeRoot" | Out-File -FilePath $env:GITHUB_ENV -Append
+
+          Write-Host "SDK root: $sdkNativeRoot"
+          Get-ChildItem "$sdkNativeRoot\native\llvm\bin" | Select-Object -First 20
+
+      - name: Cache Cargo
         uses: actions/cache@v4
         with:
           path: |
             ~/.cargo/registry
             ~/.cargo/git
-          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
-          restore-keys: ${{ runner.os }}-cargo-
+            ${{ github.workspace }}\_build\native_rust_core\target
+          key: windows-ohos-cargo-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            windows-ohos-cargo-
 
       - name: Build librustdesk_core.a
-        shell: bash
+        shell: pwsh
         run: |
-          cd native_rust_core
-          cargo build --release --target aarch64-unknown-linux-ohos 2>&1 || {
-            echo "Standard build failed, trying with custom linker flags..."
-            RUSTFLAGS="-C link-arg=-Wl,--unresolved-symbols=ignore-all" cargo build --release --target aarch64-unknown-linux-ohos 2>&1
+          powershell -ExecutionPolicy Bypass -File .\scripts\build_native_bridge.ps1 -TargetTriple "$env:TARGET_TRIPLE" -Profile release
+
+      - name: Verify artifact
+        shell: pwsh
+        run: |
+          if (-not (Test-Path ".\librustdesk_core.a")) {
+            throw "librustdesk_core.a was not generated"
           }
-          cp ../target/aarch64-unknown-linux-ohos/release/librustdesk_harmony_bridge.a ../librustdesk_core.a 2>/dev/null || true
-          if [ ! -f ../librustdesk_core.a ]; then
-            find ../target -name "librustdesk_harmony_bridge.a" -exec cp {} ../librustdesk_core.a \;
-          fi
-          ls -lh ../librustdesk_core.a
+
+          Get-Item ".\librustdesk_core.a" | Format-List Name,Length,FullName
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: librustdesk_core
           path: librustdesk_core.a
-          if-no-files-found: warn
-
-      - name: Create release on tag
-        if: startsWith(github.ref, 'refs/tags/')
-        uses: softprops/action-gh-release@v2
-        with:
-          files: librustdesk_core.a
+          if-no-files-found: error
