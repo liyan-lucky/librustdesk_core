@@ -8,6 +8,7 @@ $ErrorActionPreference = "Stop"
 # Create log file
 $logFile = Join-Path $PSScriptRoot "..\build_debug_$(Get-Date -Format 'yyyyMMdd_HHmmss').log"
 $cargoLogFile = Join-Path $PSScriptRoot "..\cargo_build_$(Get-Date -Format 'yyyyMMdd_HHmmss').log"
+$envLogFile = Join-Path $PSScriptRoot "..\build_env_$(Get-Date -Format 'yyyyMMdd_HHmmss').log"
 
 function Write-Log {
   param([string]$Message)
@@ -20,7 +21,9 @@ function Write-Log {
 Write-Log "=== Build Native Bridge Started ==="
 Write-Log "Target Triple: $TargetTriple"
 Write-Log "Profile: $Profile"
+Write-Log "Script log will be saved to: $logFile"
 Write-Log "Cargo log will be saved to: $cargoLogFile"
+Write-Log "Environment log will be saved to: $envLogFile"
 
 if ($TargetTriple -ne "aarch64-unknown-linux-ohos") {
   throw "Unsupported target triple: $TargetTriple. Current HarmonyOS package ABI is arm64-v8a only."
@@ -544,9 +547,18 @@ $cmdLines = @(
   "set `"BINDGEN_EXTRA_CLANG_ARGS_${TargetTriple}=$bindgenClangArgs`"",
   "set `"BINDGEN_EXTRA_CLANG_ARGS_${targetEnvKey}=$bindgenClangArgs`"",
   $(if ($rustupExe) { "call `"$rustupExe`" target add $TargetTriple || exit /b 1" } else { "rem rustup.exe not found; assuming target $TargetTriple is already installed" }),
+  "echo === Cargo Build Environment ===",
+  "echo Target Triple: $TargetTriple",
+  "echo Cargo: `"$cargoExe`"",
+  "echo LD: !LD!",
+  "echo CC: !CC_${targetEnvKey}!",
+  "echo CXX: !CXX_${targetEnvKey}!",
+  "echo AR: !AR_${targetEnvKey}!",
+  "echo ===",
   "echo === Starting Cargo Build === >>$cargoLogFile",
   "echo [%date% %time%] Build started >>$cargoLogFile",
   "cd /d `"$nativeCoreDir`"",
+  "echo Working directory: %cd% >>$cargoLogFile",
   "`"$cargoExe`" build --profile $Profile --target $TargetTriple --verbose 2>&1 >>$cargoLogFile",
   "set BUILD_EXIT_CODE=!ERRORLEVEL!",
   "echo [%date% %time%] Build finished with exit code !BUILD_EXIT_CODE! >>$cargoLogFile",
@@ -559,28 +571,84 @@ $cmdScriptPath = Join-Path $buildRoot "build-native-bridge-$TargetTriple.cmd"
 Write-Log "Build script path: $cmdScriptPath"
 Set-Content -Path $cmdScriptPath -Value $cmdScript -Encoding ascii
 
+# 保存环境信息用于调试
+Write-Log "=== Saving Build Environment Information ==="
+@"
+=== Build Environment Snapshot ===
+Timestamp: $(Get-Date -Format "yyyy-MM-dd HH:mm:ss")
+Working Directory: $(Get-Location)
+PowerShell Version: $($PSVersionTable.PSVersion)
+OS Version: $([System.Environment]::OSVersion)
+
+=== Key Paths ===
+cargo.exe: $cargoExe
+rustup.exe: $rustupExe
+MSYS2 bash: $msysBashExe
+MSYS2 perl: $msysPerlExe
+Host SDK Dir: $hostSdkDir
+Native Core Dir: $nativeCoreDir
+Cargo Target Dir: $cargoTargetDir
+Build Root: $buildRoot
+
+=== Environment Variables ===
+"@ | Out-File -FilePath $envLogFile -Encoding UTF8
+Get-ChildItem env: | Where-Object { $_.Name -like "*CARGO*" -or $_.Name -like "*RUST*" -or $_.Name -like "*OHOS*" -or $_.Name -like "*LLVM*" } | ForEach-Object {
+  "$($_.Name)=$($_.Value)" | Out-File -FilePath $envLogFile -Encoding UTF8 -Append
+}
+
+Write-Log "Environment log saved to: $envLogFile"
+Write-Log ""
 Write-Log "=== Starting Cargo Build ==="
+Write-Log "Running: & cmd.exe /d /c $cmdScriptPath"
+Write-Log "Current working directory: $(Get-Location)"
+
 try {
-  & cmd.exe /d /c $cmdScriptPath | Tee-Object -FilePath $cargoLogFile -Append
+  # 直接运行 cmd.exe，同时记录输出到日志
+  $stopwatch = [System.Diagnostics.Stopwatch]::StartNew()
+  
+  & cmd.exe /d /c $cmdScriptPath 2>&1 | Tee-Object -FilePath $cargoLogFile -Append
   $cargoExitCode = $LASTEXITCODE
+  
+  $stopwatch.Stop()
+  Write-Log "Cargo build took $($stopwatch.Elapsed.TotalSeconds) seconds"
   Write-Log "Cargo build exit code: $cargoExitCode"
   
-  # Read cargo log and show important parts
+  # 检查 cargo 进程是否崩溃
+  if ($cargoExitCode -eq -1073741819) {
+    Write-Log "ERROR: Access violation (0xC0000005) - likely memory corruption or tool chain issue"
+    Write-Log "Possible causes:"
+    Write-Log "  1. Insufficient memory or disk space"
+    Write-Log "  2. CARGO_BUILD_JOBS too high - try reducing to 1"
+    Write-Log "  3. Parallel compilation conflict"
+    Write-Log "  4. MSYS2/LLVM toolchain incompatibility"
+  }
+  
+  # 读取并显示 cargo 日志的最后部分
   if (Test-Path $cargoLogFile) {
     Write-Log ""
-    Write-Log "=== Last 50 lines of Cargo build output ==="
-    $cargoLog = Get-Content -Path $cargoLogFile -Tail 50
-    $cargoLog | ForEach-Object { Write-Log $_ }
+    Write-Log "=== Cargo build output (last 100 lines) ==="
+    $cargoLog = Get-Content -Path $cargoLogFile -Tail 100 -ErrorAction SilentlyContinue
+    if ($cargoLog) {
+      $cargoLog | ForEach-Object { Write-Log $_ }
+    }
   }
   
   if ($cargoExitCode -ne 0) {
     Write-Log "ERROR: cargo build failed with exit code $cargoExitCode"
     Write-Log "Full cargo build log: $cargoLogFile"
+    Write-Log "Environment log: $envLogFile"
     Write-Log "Script log file: $logFile"
+    Write-Log ""
+    Write-Log "Debugging tips:"
+    Write-Log "  1. Check memory usage during build"
+    Write-Log "  2. Try setting CARGO_BUILD_JOBS=1 in environment"
+    Write-Log "  3. Increase system page file size"
+    Write-Log "  4. Clear cargo incremental compilation cache"
     throw "cargo build failed with exit code $cargoExitCode."
   }
 } finally {
   Remove-Item -LiteralPath $cmdScriptPath -Force -ErrorAction SilentlyContinue
+  Write-Log "Build script cleaned up"
 }
 
 Write-Log "=== Locating built artifact ==="
@@ -617,6 +685,7 @@ if (Test-Path $prefixedStaticLib) {
 } else {
   Write-Log "ERROR: Native bridge build succeeded, but no static library was found in $artifactDir."
   Write-Log "Full cargo build log: $cargoLogFile"
+  Write-Log "Environment log: $envLogFile"
   Write-Log "Script log file: $logFile"
   throw "Native bridge build succeeded, but no static library was found in $artifactDir."
 }
@@ -637,8 +706,10 @@ Write-Log "Native bridge artifact copied to $outputDir\librustdesk_harmony_bridg
 Write-Log "App native core staticlib updated at $appStaticLib"
 Write-Log "Script log: $logFile"
 Write-Log "Cargo build log: $cargoLogFile"
+Write-Log "Environment log: $envLogFile"
 
 Write-Host "Native bridge artifact copied to $outputDir\librustdesk_harmony_bridge.a"
 Write-Host "App native core staticlib updated at $appStaticLib"
 Write-Host "Script log: $logFile"
 Write-Host "Cargo build log: $cargoLogFile"
+Write-Host "Environment log: $envLogFile"
