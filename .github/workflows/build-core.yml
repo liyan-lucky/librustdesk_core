@@ -78,15 +78,26 @@ jobs:
             throw "clang.exe not found"
           }
 
-          $sdkNativeRoot = Split-Path -Parent (Split-Path -Parent (Split-Path -Parent $clang.FullName))
+          $llvmBinDir = Split-Path -Parent $clang.FullName
+          $llvmDir = Split-Path -Parent $llvmBinDir
+          $nativeDir = Split-Path -Parent $llvmDir
+          $sdkNativeRoot = Split-Path -Parent $nativeDir
 
-          if (-not (Test-Path (Join-Path $sdkNativeRoot "native\sysroot"))) {
-            throw "native/sysroot not found"
+          if (-not (Test-Path (Join-Path $nativeDir "sysroot"))) {
+            throw "sysroot not found. Expected: $nativeDir\sysroot"
+          }
+
+          if (-not (Test-Path (Join-Path $nativeDir "llvm\lib"))) {
+            throw "llvm/lib not found. Expected: $nativeDir\llvm\lib"
           }
 
           "RUSTDESK_HARMONY_HOST_SDK=$sdkNativeRoot" | Out-File -FilePath $env:GITHUB_ENV -Append
           "OHOS_SDK_HOME=$sdkNativeRoot" | Out-File -FilePath $env:GITHUB_ENV -Append
           "OHOS_NDK_HOME=$sdkNativeRoot" | Out-File -FilePath $env:GITHUB_ENV -Append
+
+          Write-Host "SDK root: $sdkNativeRoot"
+          Write-Host "Native dir: $nativeDir"
+          Get-ChildItem "$nativeDir" | Select-Object Name
 
       - name: Cache Cargo
         uses: actions/cache@v4
