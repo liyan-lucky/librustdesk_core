@@ -20,6 +20,10 @@ jobs:
       VCPKG_ROOT: ${{ github.workspace }}\_build\vcpkg
       VCPKG_INSTALLED_ROOT: ${{ github.workspace }}\_build\vcpkg\installed
       RUST_BACKTRACE: full
+      CARGO_BUILD_JOBS: 2
+      CARGO_PROFILE_RELEASE_LTO: "false"
+      CARGO_PROFILE_RELEASE_CODEGEN_UNITS: 16
+      CARGO_PROFILE_RELEASE_STRIP: "false"
 
     steps:
       - name: Checkout
@@ -149,6 +153,9 @@ jobs:
 
             Write-Host "==== SDK sysroot check ===="
             Get-ChildItem -Path "$env:RUSTDESK_HARMONY_HOST_SDK\native\sysroot\usr" -ErrorAction SilentlyContinue | Select-Object Name | Format-Table -AutoSize
+
+            Write-Host "==== Cargo target recent files ===="
+            Get-ChildItem -Path "$env:CARGO_TARGET_DIR" -Recurse -ErrorAction SilentlyContinue | Sort-Object LastWriteTime -Descending | Select-Object -First 80 FullName,Length,LastWriteTime | Format-Table -AutoSize
 
             throw "build_native_bridge.ps1 failed with exit code $LASTEXITCODE"
           }
