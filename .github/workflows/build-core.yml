@@ -133,7 +133,7 @@ jobs:
       - name: Build librustdesk_core.a
         shell: pwsh
         run: |
-          & powershell -ExecutionPolicy Bypass -File .\scripts\build_native_bridge.ps1 -TargetTriple "$env:TARGET_TRIPLE" -Profile release
+          & powershell -ExecutionPolicy Bypass -File .\scripts\build_native_bridge.ps1 -TargetTriple "$env:TARGET_TRIPLE" -Profile dev
 
           if ($LASTEXITCODE -ne 0) {
             Write-Host "==== Search libsodium config.log ===="
