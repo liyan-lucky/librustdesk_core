@@ -7,6 +7,8 @@ $ErrorActionPreference = "Stop"
 
 # Create log file
 $logFile = Join-Path $PSScriptRoot "..\build_debug_$(Get-Date -Format 'yyyyMMdd_HHmmss').log"
+$cargoLogFile = Join-Path $PSScriptRoot "..\cargo_build_$(Get-Date -Format 'yyyyMMdd_HHmmss').log"
+
 function Write-Log {
   param([string]$Message)
   $timestamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
@@ -18,6 +20,7 @@ function Write-Log {
 Write-Log "=== Build Native Bridge Started ==="
 Write-Log "Target Triple: $TargetTriple"
 Write-Log "Profile: $Profile"
+Write-Log "Cargo log will be saved to: $cargoLogFile"
 
 if ($TargetTriple -ne "aarch64-unknown-linux-ohos") {
   throw "Unsupported target triple: $TargetTriple. Current HarmonyOS package ABI is arm64-v8a only."
@@ -503,6 +506,7 @@ $targetCompileFlags = "--target=$bindgenTarget --sysroot=$sdkSysrootForward -D__
 
 $cmdLines = @(
   "@echo off",
+  "setlocal enabledelayedexpansion",
   $(if ($vcvarsScript) { "call `"$vcvarsScript`" >nul || exit /b 1" } else { "rem vcvars64.bat not found; using current environment" }),
   "set `"RUSTDESK_HARMONY_HOST_SDK=$hostSdkDir`"",
   "set `"OHOS_SDK_HOME=$hostSdkDir`"",
@@ -540,17 +544,14 @@ $cmdLines = @(
   "set `"BINDGEN_EXTRA_CLANG_ARGS_${TargetTriple}=$bindgenClangArgs`"",
   "set `"BINDGEN_EXTRA_CLANG_ARGS_${targetEnvKey}=$bindgenClangArgs`"",
   $(if ($rustupExe) { "call `"$rustupExe`" target add $TargetTriple || exit /b 1" } else { "rem rustup.exe not found; assuming target $TargetTriple is already installed" }),
-  "echo === Starting Cargo Build ==="
-)
-
-# Add verbose cargo build command
-$cargoCmd = "`"$cargoExe`" build --profile $Profile --target $TargetTriple --verbose"
-if ($env:CARGO_BUILD_JOBS) {
-  $cargoCmd += " -j $env:CARGO_BUILD_JOBS"
-}
-$cmdLines += @(
-  "cd /d `"$nativeCoreDir`" && $cargoCmd",
-  "echo === Cargo Build Completed with exit code %ERRORLEVEL% ==="
+  "echo === Starting Cargo Build === >>$cargoLogFile",
+  "echo [%date% %time%] Build started >>$cargoLogFile",
+  "cd /d `"$nativeCoreDir`"",
+  "`"$cargoExe`" build --profile $Profile --target $TargetTriple --verbose 2>&1 >>$cargoLogFile",
+  "set BUILD_EXIT_CODE=!ERRORLEVEL!",
+  "echo [%date% %time%] Build finished with exit code !BUILD_EXIT_CODE! >>$cargoLogFile",
+  "echo === Cargo Build Log Saved to $cargoLogFile ===",
+  "exit /b !BUILD_EXIT_CODE!"
 )
 
 $cmdScript = [string]::Join("`r`n", $cmdLines)
@@ -560,12 +561,22 @@ Set-Content -Path $cmdScriptPath -Value $cmdScript -Encoding ascii
 
 Write-Log "=== Starting Cargo Build ==="
 try {
-  & cmd.exe /d /c $cmdScriptPath
+  & cmd.exe /d /c $cmdScriptPath | Tee-Object -FilePath $cargoLogFile -Append
   $cargoExitCode = $LASTEXITCODE
   Write-Log "Cargo build exit code: $cargoExitCode"
+  
+  # Read cargo log and show important parts
+  if (Test-Path $cargoLogFile) {
+    Write-Log ""
+    Write-Log "=== Last 50 lines of Cargo build output ==="
+    $cargoLog = Get-Content -Path $cargoLogFile -Tail 50
+    $cargoLog | ForEach-Object { Write-Log $_ }
+  }
+  
   if ($cargoExitCode -ne 0) {
     Write-Log "ERROR: cargo build failed with exit code $cargoExitCode"
-    Write-Log "Build log file: $logFile"
+    Write-Log "Full cargo build log: $cargoLogFile"
+    Write-Log "Script log file: $logFile"
     throw "cargo build failed with exit code $cargoExitCode."
   }
 } finally {
@@ -605,7 +616,8 @@ if (Test-Path $prefixedStaticLib) {
   $sourceLib = $depsStaticLib
 } else {
   Write-Log "ERROR: Native bridge build succeeded, but no static library was found in $artifactDir."
-  Write-Log "Build log file: $logFile"
+  Write-Log "Full cargo build log: $cargoLogFile"
+  Write-Log "Script log file: $logFile"
   throw "Native bridge build succeeded, but no static library was found in $artifactDir."
 }
 
@@ -623,8 +635,10 @@ Write-Log "Copied to: $appStaticLib"
 Write-Log "=== Build Native Bridge Completed Successfully ==="
 Write-Log "Native bridge artifact copied to $outputDir\librustdesk_harmony_bridge.a"
 Write-Log "App native core staticlib updated at $appStaticLib"
-Write-Log "Build log saved to: $logFile"
+Write-Log "Script log: $logFile"
+Write-Log "Cargo build log: $cargoLogFile"
 
 Write-Host "Native bridge artifact copied to $outputDir\librustdesk_harmony_bridge.a"
 Write-Host "App native core staticlib updated at $appStaticLib"
-Write-Host "Build log saved to: $logFile"
+Write-Host "Script log: $logFile"
+Write-Host "Cargo build log: $cargoLogFile"
