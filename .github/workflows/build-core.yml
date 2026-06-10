@@ -15,6 +15,7 @@ jobs:
 
     env:
       TARGET_TRIPLE: aarch64-unknown-linux-ohos
+      RUST_TOOLCHAIN_VERSION: "1.82.0"
       RUSTDESK_HARMONY_BUILD_DIR: ${{ github.workspace }}\_build
       CARGO_TARGET_DIR: ${{ github.workspace }}\_build\native_rust_core\target
       VCPKG_ROOT: ${{ github.workspace }}\_build\vcpkg
@@ -29,8 +30,8 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Install Rust stable
-        uses: dtolnay/rust-toolchain@stable
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@1.82.0
         with:
           targets: aarch64-unknown-linux-ohos
 
@@ -74,29 +75,18 @@ jobs:
           } | Select-Object -First 1
 
           if (-not $clang) {
-            throw "clang.exe not found. SDK zip must contain native/llvm/bin/clang.exe"
+            throw "clang.exe not found"
           }
 
           $sdkNativeRoot = Split-Path -Parent (Split-Path -Parent (Split-Path -Parent $clang.FullName))
 
           if (-not (Test-Path (Join-Path $sdkNativeRoot "native\sysroot"))) {
-            $candidate = Get-ChildItem -Path $sdkRoot -Recurse -Directory -Filter sysroot | Where-Object {
-              $_.FullName -like "*native*sysroot"
-            } | Select-Object -First 1
-
-            if (-not $candidate) {
-              throw "native/sysroot not found in SDK zip"
-            }
-
-            $sdkNativeRoot = Split-Path -Parent (Split-Path -Parent $candidate.FullName)
+            throw "native/sysroot not found"
           }
 
           "RUSTDESK_HARMONY_HOST_SDK=$sdkNativeRoot" | Out-File -FilePath $env:GITHUB_ENV -Append
           "OHOS_SDK_HOME=$sdkNativeRoot" | Out-File -FilePath $env:GITHUB_ENV -Append
           "OHOS_NDK_HOME=$sdkNativeRoot" | Out-File -FilePath $env:GITHUB_ENV -Append
-
-          Write-Host "SDK root: $sdkNativeRoot"
-          Get-ChildItem "$sdkNativeRoot\native\llvm\bin" | Select-Object -First 20
 
       - name: Cache Cargo
         uses: actions/cache@v4
@@ -117,18 +107,10 @@ jobs:
 
           if (-not (Test-Path $crateDir)) {
             New-Item -ItemType Directory -Force -Path $registrySrc | Out-Null
-
             $crateFile = Join-Path $env:RUNNER_TEMP "libsodium-sys-0.2.7.crate"
             Invoke-WebRequest -Uri "https://crates.io/api/v1/crates/libsodium-sys/0.2.7/download" -OutFile $crateFile
-
             tar -xzf $crateFile -C $registrySrc
           }
-
-          if (-not (Test-Path (Join-Path $crateDir "libsodium\configure"))) {
-            throw "libsodium-sys-0.2.7 was downloaded, but libsodium/configure was not found"
-          }
-
-          Get-ChildItem $crateDir | Select-Object -First 20
 
       - name: Build librustdesk_core.a
         shell: pwsh
@@ -136,27 +118,6 @@ jobs:
           & powershell -ExecutionPolicy Bypass -File .\scripts\build_native_bridge.ps1 -TargetTriple "$env:TARGET_TRIPLE" -Profile dev
 
           if ($LASTEXITCODE -ne 0) {
-            Write-Host "==== Search libsodium config.log ===="
-            Get-ChildItem -Path "$env:RUSTDESK_HARMONY_BUILD_DIR" -Recurse -Filter config.log -ErrorAction SilentlyContinue | ForEach-Object {
-              Write-Host "==== CONFIG LOG: $($_.FullName) ===="
-              Get-Content $_.FullName -Tail 300
-            }
-
-            Write-Host "==== Search generated build scripts ===="
-            Get-ChildItem -Path "$env:RUSTDESK_HARMONY_BUILD_DIR" -Recurse -Filter build-libsodium.sh -ErrorAction SilentlyContinue | ForEach-Object {
-              Write-Host "==== BUILD SCRIPT: $($_.FullName) ===="
-              Get-Content $_.FullName
-            }
-
-            Write-Host "==== SDK bin files ===="
-            Get-ChildItem -Path "$env:RUSTDESK_HARMONY_HOST_SDK\native\llvm\bin" -ErrorAction SilentlyContinue | Select-Object Name,Length | Format-Table -AutoSize
-
-            Write-Host "==== SDK sysroot check ===="
-            Get-ChildItem -Path "$env:RUSTDESK_HARMONY_HOST_SDK\native\sysroot\usr" -ErrorAction SilentlyContinue | Select-Object Name | Format-Table -AutoSize
-
-            Write-Host "==== Cargo target recent files ===="
-            Get-ChildItem -Path "$env:CARGO_TARGET_DIR" -Recurse -ErrorAction SilentlyContinue | Sort-Object LastWriteTime -Descending | Select-Object -First 80 FullName,Length,LastWriteTime | Format-Table -AutoSize
-
             throw "build_native_bridge.ps1 failed with exit code $LASTEXITCODE"
           }
 
