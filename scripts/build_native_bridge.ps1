@@ -464,7 +464,7 @@ $cmdLines = @(
   "set `"OHOS_SDK_HOME=$hostSdkDir`"",
   "call `"$ohosEnvScript`" || exit /b 1",
   "set `"PATH=%LLVM_BIN%;$env:USERPROFILE\.cargo\bin;%PATH%;$msysBinDir`"",
-  "$(if ($env:RUST_TOOLCHAIN_VERSION) { "set `"RUSTUP_TOOLCHAIN=$($env:RUST_TOOLCHAIN_VERSION)`"" } else { "set `"RUSTUP_TOOLCHAIN=stable`"" }),
+  $(if ($env:RUST_TOOLCHAIN_VERSION) { "set `"RUSTUP_TOOLCHAIN=$($env:RUST_TOOLCHAIN_VERSION)`"" } else { "set `"RUSTUP_TOOLCHAIN=stable`"" }),
   "set `"CARGO_TARGET_DIR=$cargoTargetDir`"",
   "set `"VCPKG_ROOT=$vcpkgRoot`"",
   "set `"VCPKG_INSTALLED_ROOT=$vcpkgInstalledRoot`"",
