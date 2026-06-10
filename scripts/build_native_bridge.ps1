@@ -5,22 +5,43 @@ param(
 
 $ErrorActionPreference = "Stop"
 
+# Create log file
+$logFile = Join-Path $PSScriptRoot "..\build_debug_$(Get-Date -Format 'yyyyMMdd_HHmmss').log"
+function Write-Log {
+  param([string]$Message)
+  $timestamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
+  $logMessage = "[$timestamp] $Message"
+  Write-Host $logMessage
+  Add-Content -Path $logFile -Value $logMessage -Force
+}
+
+Write-Log "=== Build Native Bridge Started ==="
+Write-Log "Target Triple: $TargetTriple"
+Write-Log "Profile: $Profile"
+
 if ($TargetTriple -ne "aarch64-unknown-linux-ohos") {
   throw "Unsupported target triple: $TargetTriple. Current HarmonyOS package ABI is arm64-v8a only."
 }
 
 $projectRoot = Split-Path -Parent $PSScriptRoot
+Write-Log "Project Root: $projectRoot"
+
 $nativeCoreDir = Join-Path $projectRoot "native_rust_core"
 $buildRoot = if ($env:RUSTDESK_HARMONY_BUILD_DIR) {
   $env:RUSTDESK_HARMONY_BUILD_DIR
 } else {
   [System.IO.Path]::GetFullPath((Join-Path $projectRoot "..\99_Temp\rustdesk_harmonyos_build"))
 }
+Write-Log "Build Root: $buildRoot"
+Write-Log "Native Core Dir: $nativeCoreDir"
+
 $cargoTargetDir = if ($env:CARGO_TARGET_DIR) {
   $env:CARGO_TARGET_DIR
 } else {
   Join-Path $buildRoot "native_rust_core\target"
 }
+Write-Log "Cargo Target Dir: $cargoTargetDir"
+
 $outputDir = Join-Path $cargoTargetDir "harmony"
 $linkerScript = Join-Path $PSScriptRoot "$TargetTriple-clang.cmd"
 $cxxScript = if ($TargetTriple -eq "aarch64-unknown-linux-ohos") {
@@ -122,6 +143,7 @@ function Resolve-HostSdkDirectory {
     [string]$LocalPropertiesFile
   )
 
+  Write-Log "Resolving Host SDK Directory..."
   $candidates = New-Object System.Collections.Generic.List[string]
   foreach ($candidate in @(
     $env:RUSTDESK_HARMONY_HOST_SDK,
@@ -135,12 +157,14 @@ function Resolve-HostSdkDirectory {
   )) {
     if (-not [string]::IsNullOrWhiteSpace($candidate)) {
       $candidates.Add($candidate)
+      Write-Log "  Candidate: $candidate"
     }
   }
 
   $sdkFromProperties = Get-LocalPropertyValue -FilePath $LocalPropertiesFile -Key "sdk.dir"
   if ($sdkFromProperties) {
     $candidates.Add($sdkFromProperties)
+    Write-Log "  Candidate from properties: $sdkFromProperties"
   }
 
   foreach ($candidate in $candidates) {
@@ -148,12 +172,19 @@ function Resolve-HostSdkDirectory {
       $clangExe = Join-Path $probePath "native\llvm\bin\clang.exe"
       $llvmArExe = Join-Path $probePath "native\llvm\bin\llvm-ar.exe"
       $sysrootDir = Join-Path $probePath "native\sysroot"
+      Write-Log "  Checking: $probePath"
+      Write-Log "    clang.exe exists: $(Test-Path $clangExe)"
+      Write-Log "    llvm-ar.exe exists: $(Test-Path $llvmArExe)"
+      Write-Log "    sysroot exists: $(Test-Path $sysrootDir)"
       if ((Test-Path $clangExe) -and (Test-Path $llvmArExe) -and (Test-Path $sysrootDir)) {
-        return [System.IO.Path]::GetFullPath($probePath)
+        $resolvedPath = [System.IO.Path]::GetFullPath($probePath)
+        Write-Log "  Found SDK at: $resolvedPath"
+        return $resolvedPath
       }
     }
   }
 
+  Write-Log "WARNING: SDK not found in any candidate paths"
   return $null
 }
 
@@ -204,6 +235,7 @@ function Resolve-MsysTool {
 
   foreach ($candidate in $Candidates) {
     if ($candidate -and (Test-Path $candidate)) {
+      Write-Log "Found $Description at: $candidate"
       return [System.IO.Path]::GetFullPath($candidate)
     }
   }
@@ -268,6 +300,7 @@ function Ensure-LibsodiumStaticLibrary {
   $libDir = Join-Path $installDir "lib"
   $finalLib = Join-Path $libDir "liblibsodium.a"
   if (Test-Path $finalLib) {
+    Write-Log "libsodium already built at: $finalLib"
     Stage-LibsodiumHostImportLibrary -LibDirectory $libDir
     return $libDir
   }
@@ -319,16 +352,23 @@ cp -f "$installMsys/lib/libsodium.a" "$installMsys/lib/liblibsodium.a"
 "@
   Set-Content -Path $bashScriptPath -Value $bashScriptContent -Encoding ascii
 
-  Write-Host "Building external libsodium for $TargetTriple..."
+  Write-Log "Building external libsodium for $TargetTriple..."
+  Write-Log "  Work Root: $workRoot"
+  Write-Log "  Source Dir: $sourceDirectory"
+  Write-Log "  Install Dir: $installDir"
+  Write-Log "  Build Jobs: $jobs"
   & $MsysBashExe $bashScriptPath
   if ($LASTEXITCODE -ne 0) {
+    Write-Log "ERROR: Failed to build libsodium for $TargetTriple (exit code: $LASTEXITCODE)"
     throw "Failed to build libsodium for $TargetTriple."
   }
 
   if (-not (Test-Path $finalLib)) {
+    Write-Log "ERROR: libsodium build completed, but $finalLib was not produced."
     throw "libsodium build completed, but $finalLib was not produced."
   }
 
+  Write-Log "libsodium built successfully at: $finalLib"
   Stage-LibsodiumHostImportLibrary -LibDirectory $libDir
   return $libDir
 }
@@ -398,6 +438,8 @@ if (-not $resolvedHostSdkDir) {
   throw "OpenHarmony host SDK was not found. Install the DevEco SDK or set OHOS_SDK_HOME/OHOS_NDK_HOME."
 }
 $hostSdkDir = Ensure-NoSpaceSdkMirror -SdkDirectory $resolvedHostSdkDir -MirrorDirectory $hostSdkMirrorDir
+Write-Log "Host SDK Dir: $hostSdkDir"
+
 $sdkLlvmBin = Join-Path $hostSdkDir "native\llvm\bin"
 $sdkLdExe = Join-Path $sdkLlvmBin "ld.lld.exe"
 $sdkNmExe = Join-Path $sdkLlvmBin "llvm-nm.exe"
@@ -430,6 +472,7 @@ $staleRoots = @(
   (Join-Path $cargoTargetDir "$TargetTriple\$Profile\build"),
   (Join-Path $cargoTargetDir "$TargetTriple\$Profile\.fingerprint")
 )
+Write-Log "Cleaning stale build artifacts..."
 foreach ($staleRoot in $staleRoots) {
   if (-not (Test-Path $staleRoot)) {
     continue
@@ -437,6 +480,7 @@ foreach ($staleRoot in $staleRoots) {
   Get-ChildItem -Path $staleRoot -Directory -ErrorAction SilentlyContinue | Where-Object {
     $_.Name -like "openssl-sys-*" -or $_.Name -like "openssl-*"
   } | ForEach-Object {
+    Write-Log "  Removing: $($_.FullName)"
     Remove-Item -LiteralPath $_.FullName -Recurse -Force -ErrorAction SilentlyContinue
   }
 }
@@ -496,29 +540,62 @@ $cmdLines = @(
   "set `"BINDGEN_EXTRA_CLANG_ARGS_${TargetTriple}=$bindgenClangArgs`"",
   "set `"BINDGEN_EXTRA_CLANG_ARGS_${targetEnvKey}=$bindgenClangArgs`"",
   $(if ($rustupExe) { "call `"$rustupExe`" target add $TargetTriple || exit /b 1" } else { "rem rustup.exe not found; assuming target $TargetTriple is already installed" }),
-  "cd /d `"$nativeCoreDir`" && `"$cargoExe`" build --profile $Profile --target $TargetTriple"
+  "echo === Starting Cargo Build ==="
 )
+
+# Add verbose cargo build command
+$cargoCmd = "`"$cargoExe`" build --profile $Profile --target $TargetTriple --verbose"
+if ($env:CARGO_BUILD_JOBS) {
+  $cargoCmd += " -j $env:CARGO_BUILD_JOBS"
+}
+$cmdLines += @(
+  "cd /d `"$nativeCoreDir`" && $cargoCmd",
+  "echo === Cargo Build Completed with exit code %ERRORLEVEL% ==="
+)
+
 $cmdScript = [string]::Join("`r`n", $cmdLines)
 $cmdScriptPath = Join-Path $buildRoot "build-native-bridge-$TargetTriple.cmd"
+Write-Log "Build script path: $cmdScriptPath"
 Set-Content -Path $cmdScriptPath -Value $cmdScript -Encoding ascii
+
+Write-Log "=== Starting Cargo Build ==="
 try {
   & cmd.exe /d /c $cmdScriptPath
   $cargoExitCode = $LASTEXITCODE
+  Write-Log "Cargo build exit code: $cargoExitCode"
   if ($cargoExitCode -ne 0) {
+    Write-Log "ERROR: cargo build failed with exit code $cargoExitCode"
+    Write-Log "Build log file: $logFile"
     throw "cargo build failed with exit code $cargoExitCode."
   }
 } finally {
   Remove-Item -LiteralPath $cmdScriptPath -Force -ErrorAction SilentlyContinue
 }
 
+Write-Log "=== Locating built artifact ==="
 $artifactProfileDir = switch ($Profile) {
   "dev" { "debug" }
   default { $Profile }
 }
 $artifactDir = Join-Path $cargoTargetDir "$TargetTriple\$artifactProfileDir"
+Write-Log "Artifact directory: $artifactDir"
+
 $staticLib = Join-Path $artifactDir "rustdesk_harmony_bridge.a"
 $prefixedStaticLib = Join-Path $artifactDir "librustdesk_harmony_bridge.a"
 $depsStaticLib = Join-Path $artifactDir "deps\librustdesk_harmony_bridge.a"
+
+Write-Log "Checking library locations:"
+Write-Log "  $prefixedStaticLib exists: $(Test-Path $prefixedStaticLib)"
+Write-Log "  $staticLib exists: $(Test-Path $staticLib)"
+Write-Log "  $depsStaticLib exists: $(Test-Path $depsStaticLib)"
+
+# List directory contents for debugging
+if (Test-Path $artifactDir) {
+  Write-Log "Contents of $artifactDir :"
+  Get-ChildItem -Path $artifactDir -File | ForEach-Object {
+    Write-Log "  - $($_.Name) ($($_.Length) bytes)"
+  }
+}
 
 if (Test-Path $prefixedStaticLib) {
   $sourceLib = $prefixedStaticLib
@@ -527,15 +604,27 @@ if (Test-Path $prefixedStaticLib) {
 } elseif (Test-Path $depsStaticLib) {
   $sourceLib = $depsStaticLib
 } else {
+  Write-Log "ERROR: Native bridge build succeeded, but no static library was found in $artifactDir."
+  Write-Log "Build log file: $logFile"
   throw "Native bridge build succeeded, but no static library was found in $artifactDir."
 }
 
+Write-Log "Using source library: $sourceLib"
+
 New-Item -ItemType Directory -Path $outputDir -Force | Out-Null
 Copy-Item -LiteralPath $sourceLib -Destination (Join-Path $outputDir "librustdesk_harmony_bridge.a") -Force
+Write-Log "Copied to: $outputDir\librustdesk_harmony_bridge.a"
 
 $appStaticLib = Join-Path $projectRoot "entry\src\main\libs\arm64\librustdesk_core.a"
 New-Item -ItemType Directory -Path (Split-Path -Parent $appStaticLib) -Force | Out-Null
 Copy-Item -LiteralPath $sourceLib -Destination $appStaticLib -Force
+Write-Log "Copied to: $appStaticLib"
+
+Write-Log "=== Build Native Bridge Completed Successfully ==="
+Write-Log "Native bridge artifact copied to $outputDir\librustdesk_harmony_bridge.a"
+Write-Log "App native core staticlib updated at $appStaticLib"
+Write-Log "Build log saved to: $logFile"
 
 Write-Host "Native bridge artifact copied to $outputDir\librustdesk_harmony_bridge.a"
 Write-Host "App native core staticlib updated at $appStaticLib"
+Write-Host "Build log saved to: $logFile"
