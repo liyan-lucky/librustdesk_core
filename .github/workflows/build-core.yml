@@ -110,6 +110,13 @@ jobs:
         run: |
           powershell -ExecutionPolicy Bypass -File .\scripts\build_native_bridge.ps1 -TargetTriple "$env:TARGET_TRIPLE" -Profile release
 
+          $builtLib = ".\entry\src\main\libs\arm64\librustdesk_core.a"
+          if (-not (Test-Path $builtLib)) {
+            throw "Native build finished, but $builtLib was not found"
+          }
+
+          Copy-Item -LiteralPath $builtLib -Destination ".\librustdesk_core.a" -Force
+
       - name: Verify artifact
         shell: pwsh
         run: |
