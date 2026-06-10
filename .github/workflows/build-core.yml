@@ -21,7 +21,7 @@ jobs:
       VCPKG_ROOT: ${{ github.workspace }}\_build\vcpkg
       VCPKG_INSTALLED_ROOT: ${{ github.workspace }}\_build\vcpkg\installed
       RUST_BACKTRACE: full
-      CARGO_BUILD_JOBS: 2
+      CARGO_BUILD_JOBS: 1
       CARGO_PROFILE_RELEASE_LTO: "false"
       CARGO_PROFILE_RELEASE_CODEGEN_UNITS: 16
       CARGO_PROFILE_RELEASE_STRIP: "false"
@@ -138,6 +138,17 @@ jobs:
           }
 
           Copy-Item -LiteralPath $builtLib -Destination ".\librustdesk_core.a" -Force
+
+      - name: Upload debug logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-debug-logs
+          path: |
+            build_debug_*.log
+            cargo_build_*.log
+            build_env_*.log
+          if-no-files-found: ignore
 
       - name: Verify artifact
         shell: pwsh
