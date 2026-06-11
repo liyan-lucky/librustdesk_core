@@ -363,11 +363,15 @@ cp -f "$installMsys/lib/libsodium.a" "$installMsys/lib/liblibsodium.a"
   Write-Log "  Source Dir: $sourceDirectory"
   Write-Log "  Install Dir: $installDir"
   Write-Log "  Build Jobs: $jobs"
-  $libsodiumOutput = & $MsysBashExe $bashScriptPath 2>&1
+ $libsodiumLogFile = Join-Path $workRoot "libsodium-build.log"
+
+  & cmd.exe /d /c "`"$MsysBashExe`" `"$bashScriptPath`" > `"$libsodiumLogFile`" 2>&1"
   $libsodiumExitCode = $LASTEXITCODE
 
-  foreach ($line in $libsodiumOutput) {
-    Write-Log $line
+  if (Test-Path $libsodiumLogFile) {
+    Get-Content $libsodiumLogFile | ForEach-Object {
+      Write-Log $_
+    }
   }
 
   if ($libsodiumExitCode -ne 0) {
