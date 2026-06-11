@@ -649,7 +649,7 @@ try {
     throw "cargo build failed with exit code $cargoExitCode."
   }
 } finally {
-  Remove-Item -LiteralPath $cmdScriptPath -Force -ErrorAction SilentlyContinue
+  Write-Log "Debug cmd script kept at: $cmdScriptPath"
   Write-Log "Build script cleaned up"
 }
 
