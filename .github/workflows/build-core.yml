@@ -139,7 +139,7 @@ jobs:
 
           Copy-Item -LiteralPath $builtLib -Destination ".\librustdesk_core.a" -Force
 
-   - name: Upload debug logs
+      - name: Upload debug logs
         if: always()
         uses: actions/upload-artifact@v4
         with:
