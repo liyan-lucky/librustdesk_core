@@ -245,6 +245,13 @@ fn main() {
     env::remove_var("CARGO_CFG_TARGET_FEATURE");
     env::set_var("CARGO_CFG_TARGET_FEATURE", "crt-static");
 
+    if target_env == "ohos" {
+        // OHOS does not need vcpkg native capture/codec libraries.
+        // Only common types (ImageRgb, ImageFormat, etc.) are used.
+        // Emit the cfg flag so the ohos module is selected.
+        return;
+    }
+
     find_package("libyuv");
     gen_vcpkg_package("libvpx", "vpx_ffi.h", "vpx_ffi.rs", "^[vV].*");
     gen_vcpkg_package("aom", "aom_ffi.h", "aom_ffi.rs", "^(aom|AOM|OBU|AV1).*");

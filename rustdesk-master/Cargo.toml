@@ -178,10 +178,11 @@ fontdb = "0.23"
 bytemuck = "1.23"
 ttf-parser = "0.25"
 
-[target.'cfg(all(target_os = "linux", not(target_env = "ohos")))'.dependencies]
-
+[target.'cfg(any(all(target_os = "linux", not(target_env = "ohos")), target_env = "ohos"))'.dependencies]
 scrap = { path = "libs/scrap" }
 rdev = { git = "https://github.com/rustdesk-org/rdev" }
+
+[target.'cfg(all(target_os = "linux", not(target_env = "ohos")))'.dependencies]
 
 libxdo-sys = "0.11"
 psimple = { package = "libpulse-simple-binding", version = "2.27" }

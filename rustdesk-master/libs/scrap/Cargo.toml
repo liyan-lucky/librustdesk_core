@@ -24,7 +24,7 @@ hbb_common = { path = "../hbb_common" }
 webm = { git = "https://github.com/rustdesk-org/rust-webm" }
 serde = {version="1.0", features=["derive"]}
 
-[dependencies.winapi]
+[target.'cfg(target_os = "windows")'.dependencies.winapi]
 version = "0.3"
 default-features = true
 features = ["dxgi", "dxgi1_2", "dxgi1_5", "d3d11", "winuser", "winerror", "errhandlingapi", "libloaderapi"]

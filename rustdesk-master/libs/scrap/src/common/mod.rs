@@ -1,3 +1,4 @@
+#[cfg(not(target_env = "ohos"))]
 pub use self::vpxcodec::*;
 use hbb_common::{
     bail, log,
@@ -38,23 +39,32 @@ cfg_if! {
     }
 }
 
+#[cfg(not(target_env = "ohos"))]
 pub mod codec;
+#[cfg(target_env = "ohos")]
+#[path = "codec_ohos.rs"]
+pub mod codec;
+#[cfg(not(target_env = "ohos"))]
 pub mod convert;
 #[cfg(feature = "hwcodec")]
 pub mod hwcodec;
 #[cfg(feature = "mediacodec")]
 pub mod mediacodec;
+#[cfg(not(target_env = "ohos"))]
 pub mod vpxcodec;
 #[cfg(feature = "vram")]
 pub mod vram;
+#[cfg(not(target_env = "ohos"))]
 pub use self::convert::*;
 pub const STRIDE_ALIGN: usize = 64; // commonly used in libvpx vpx_img_alloc caller
 pub const HW_STRIDE_ALIGN: usize = 0; // recommended by av_frame_get_buffer
 
+#[cfg(not(target_env = "ohos"))]
 pub mod aom;
-#[cfg(not(any(target_os = "ios")))]
+#[cfg(not(any(target_os = "ios", target_env = "ohos")))]
 pub mod camera;
 pub mod record;
+#[cfg(not(target_env = "ohos"))]
 mod vpx;
 
 #[repr(usize)]
@@ -190,6 +200,7 @@ impl Frame<'_> {
         }
     }
 
+    #[cfg(not(target_env = "ohos"))]
     pub fn to<'a>(
         &'a self,
         yuvfmt: EncodeYuvFormat,
@@ -440,6 +451,7 @@ pub trait GoogleImage {
         (w * bytes_per_pixel + align - 1) & !(align - 1)
     }
     // rgb [in/out] fmt and stride must be set in ImageRgb
+    #[cfg(not(target_env = "ohos"))]
     fn to(&self, rgb: &mut ImageRgb) {
         rgb.w = self.width();
         rgb.h = self.height();
