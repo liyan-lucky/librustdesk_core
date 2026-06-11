@@ -111,8 +111,19 @@ jobs:
             windows-ohos-cargo-
 
       - name: Prepare libsodium-sys source
-    
-- name: Prepare libopus for magnum-opus
+        shell: pwsh
+        run: |
+          $registrySrc = Join-Path $env:CARGO_HOME "registry\src\manual"
+          $crateDir = Join-Path $registrySrc "libsodium-sys-0.2.7"
+
+          if (-not (Test-Path $crateDir)) {
+            New-Item -ItemType Directory -Force -Path $registrySrc | Out-Null
+            $crateFile = Join-Path $env:RUNNER_TEMP "libsodium-sys-0.2.7.crate"
+            Invoke-WebRequest -Uri "https://crates.io/api/v1/crates/libsodium-sys/0.2.7/download" -OutFile $crateFile
+            tar -xzf $crateFile -C $registrySrc
+          }
+
+      - name: Prepare libopus for magnum-opus
         shell: pwsh
         run: |
           $opusVersion = "1.5.2"
@@ -131,7 +142,6 @@ jobs:
           tar -xzf $opusZip -C $opusRoot --strip-components=1
 
           $env:PATH = "C:\msys64\usr\bin;$env:PATH"
-
           $bashScript = Join-Path $env:RUNNER_TEMP "build-opus-ohos.sh"
 
           @"
@@ -142,19 +152,11 @@ jobs:
           export AR="$(cygpath -u "$env:RUSTDESK_HARMONY_HOST_SDK")/native/llvm/bin/llvm-ar.exe"
           export RANLIB="$(cygpath -u "$env:RUSTDESK_HARMONY_HOST_SDK")/native/llvm/bin/llvm-ranlib.exe"
           export STRIP=":"
-
           export SYSROOT="$(cygpath -u "$env:RUSTDESK_HARMONY_HOST_SDK")/native/sysroot"
           export CFLAGS="--target=aarch64-linux-ohos --sysroot=\$SYSROOT -fPIC -D__MUSL__"
           export LDFLAGS="--target=aarch64-linux-ohos --sysroot=\$SYSROOT"
 
-          ./configure \
-            --host=aarch64-unknown-linux-gnu \
-            --prefix="$(cygpath -u "$installRoot")" \
-            --enable-shared=no \
-            --enable-static=yes \
-            --disable-extra-programs \
-            --disable-doc
-
+          ./configure --host=aarch64-unknown-linux-gnu --prefix="$(cygpath -u "$installRoot")" --enable-shared=no --enable-static=yes --disable-extra-programs --disable-doc
           make -j2
           make install
           "@ | Set-Content -Path $bashScript -Encoding ascii
@@ -174,8 +176,8 @@ jobs:
 
           Write-Host "libopus prepared:"
           Get-Item $header, $libA | Format-List FullName,Length
-
       - name: Build librustdesk_core.a
+      
         shell: pwsh
         run: |
           & powershell -ExecutionPolicy Bypass -File .\scripts\build_native_bridge.ps1 -TargetTriple "$env:TARGET_TRIPLE" -Profile dev
