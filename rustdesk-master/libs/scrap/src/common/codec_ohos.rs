@@ -3,13 +3,13 @@ use std::sync::{Arc, Mutex};
 use hbb_common::{
     log,
     message_proto::{
-        supported_decoding::PreferCodec, video_frame::Chroma, CodecAbility, EncodedVideoFrame,
-        SupportedDecoding, SupportedEncoding, VideoFrame,
+        supported_decoding::PreferCodec, Chroma, EncodedVideoFrame, SupportedDecoding,
+        SupportedEncoding, VideoFrame,
     },
     ResultType,
 };
 
-use crate::{CodecFormat, EncodeInput, EncodeYuvFormat, ImageRgb, ImageTexture, Pixfmt};
+use crate::{CodecFormat, EncodeInput, EncodeYuvFormat, ImageRgb, ImageTexture};
 
 lazy_static::lazy_static! {
     static ref PEER_DECODINGS: Arc<Mutex<std::collections::HashMap<i32, SupportedDecoding>>> = Default::default();
@@ -54,8 +54,7 @@ pub enum EncodingUpdate {
 impl Encoder {
     pub fn usable_encoding() -> SupportedEncoding {
         SupportedEncoding {
-            vp8: false,
-            vp9: true,
+            vp8: true,
             av1: false,
             h264: false,
             h265: false,
@@ -67,8 +66,7 @@ impl Encoder {
 
     pub fn supported_encoding() -> SupportedEncoding {
         SupportedEncoding {
-            vp8: false,
-            vp9: true,
+            vp8: true,
             av1: false,
             h264: false,
             h265: false,

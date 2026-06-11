@@ -6583,7 +6583,7 @@ dependencies = [
 [[package]]
 name = "rdev"
 version = "0.5.0-2"
-source = "git+https://github.com/liyan-lucky/rdev?rev=cf6fe32254d0e31d67f819d61f996372243b99e5#cf6fe32254d0e31d67f819d61f996372243b99e5"
+source = "git+https://github.com/rustdesk-org/rdev#a90dbe1172f8832f54c97c62e823c5a34af5fdfe"
 dependencies = [
  "cocoa 0.24.1",
  "core-foundation 0.9.4",
@@ -6601,7 +6601,6 @@ dependencies = [
  "strum_macros 0.24.3",
  "widestring",
  "winapi 0.3.9",
- "x11 2.21.0",
 ]
 
 [[package]]
