@@ -615,13 +615,20 @@ Write-Log "Running: & cmd.exe /d /c $cmdScriptPath"
 Write-Log "Current working directory: $(Get-Location)"
 
 try {
-  # 直接运行 cmd.exe，同时记录输出到日志
+  # 通过 cmd.exe 自己重定向日志，避免 PowerShell 把 stderr 当 NativeCommandError
   $stopwatch = [System.Diagnostics.Stopwatch]::StartNew()
-  
-  & cmd.exe /d /c $cmdScriptPath 2>&1 | Tee-Object -FilePath $cargoLogFile -Append
+
+  & cmd.exe /d /c "`"$cmdScriptPath`" > `"$cargoLogFile`" 2>&1"
   $cargoExitCode = $LASTEXITCODE
-  
+
+  if (Test-Path $cargoLogFile) {
+    Get-Content $cargoLogFile | ForEach-Object {
+      Write-Host $_
+    }
+  }
+
   $stopwatch.Stop()
+
   Write-Log "Cargo build took $($stopwatch.Elapsed.TotalSeconds) seconds"
   Write-Log "Cargo build exit code: $cargoExitCode"
   
