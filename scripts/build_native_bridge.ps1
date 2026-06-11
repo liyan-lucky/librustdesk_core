@@ -555,14 +555,16 @@ $cmdLines = @(
   "echo CXX: !CXX_${targetEnvKey}!",
   "echo AR: !AR_${targetEnvKey}!",
   "echo ===",
-  "echo === Starting Cargo Build === >>$cargoLogFile",
-  "echo [%date% %time%] Build started >>$cargoLogFile",
+  "echo === Cargo Build Environment ===",
+  "echo RUSTUP_TOOLCHAIN=%RUSTUP_TOOLCHAIN%",
+  "`"$cargoExe`" --version",
+  "rustc --version --verbose",
   "cd /d `"$nativeCoreDir`"",
-  "echo Working directory: %cd% >>$cargoLogFile",
-  "`"$cargoExe`" build --profile $Profile --target $TargetTriple --verbose 2>&1 >>$cargoLogFile",
+  "echo Working directory: %cd%",
+  "echo === Starting Cargo Build ===",
+  "`"$cargoExe`" build --profile $Profile --target $TargetTriple -vv",
   "set BUILD_EXIT_CODE=!ERRORLEVEL!",
-  "echo [%date% %time%] Build finished with exit code !BUILD_EXIT_CODE! >>$cargoLogFile",
-  "echo === Cargo Build Log Saved to $cargoLogFile ===",
+  "echo === Cargo Build Finished: !BUILD_EXIT_CODE! ===",
   "exit /b !BUILD_EXIT_CODE!"
 )
 
