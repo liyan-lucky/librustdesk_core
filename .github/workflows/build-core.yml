@@ -15,7 +15,7 @@ jobs:
 
     env:
       TARGET_TRIPLE: aarch64-unknown-linux-ohos
-      RUST_TOOLCHAIN_VERSION: "1.82.0"
+      RUST_TOOLCHAIN_VERSION: "1.85.1"
       RUSTDESK_HARMONY_BUILD_DIR: ${{ github.workspace }}\_build
       CARGO_TARGET_DIR: ${{ github.workspace }}\_build\native_rust_core\target
       VCPKG_ROOT: ${{ github.workspace }}\_build\vcpkg
@@ -31,7 +31,7 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Install Rust
-        uses: dtolnay/rust-toolchain@1.82.0
+        uses: dtolnay/rust-toolchain@1.85.1
         with:
           targets: aarch64-unknown-linux-ohos
 
