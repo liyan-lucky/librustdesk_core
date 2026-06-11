@@ -363,9 +363,13 @@ cp -f "$installMsys/lib/libsodium.a" "$installMsys/lib/liblibsodium.a"
   Write-Log "  Source Dir: $sourceDirectory"
   Write-Log "  Install Dir: $installDir"
   Write-Log "  Build Jobs: $jobs"
-  & $MsysBashExe $bashScriptPath
-  if ($LASTEXITCODE -ne 0) {
-    Write-Log "ERROR: Failed to build libsodium for $TargetTriple (exit code: $LASTEXITCODE)"
+  & $MsysBashExe $bashScriptPath 2>&1 | ForEach-Object {
+    Write-Log $_
+  }
+
+  $libsodiumExitCode = $LASTEXITCODE
+  if ($libsodiumExitCode -ne 0) {
+    Write-Log "ERROR: Failed to build libsodium for $TargetTriple (exit code: $libsodiumExitCode)"
     throw "Failed to build libsodium for $TargetTriple."
   }
 
