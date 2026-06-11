@@ -21,8 +21,10 @@ cfg-if = "1.0"
 num_cpus = "1.15"
 lazy_static = "1.4"
 hbb_common = { path = "../hbb_common" }
-webm = { git = "https://github.com/rustdesk-org/rust-webm" }
 serde = {version="1.0", features=["derive"]}
+
+[target.'cfg(not(target_env = "ohos"))'.dependencies]
+webm = { git = "https://github.com/rustdesk-org/rust-webm" }
 
 [target.'cfg(target_os = "windows")'.dependencies.winapi]
 version = "0.3"

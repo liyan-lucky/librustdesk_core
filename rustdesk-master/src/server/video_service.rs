@@ -45,11 +45,14 @@ use scrap::vram::{VRamEncoder, VRamEncoderConfig};
 #[cfg(not(windows))]
 use scrap::Capturer;
 use scrap::{
-    aom::AomEncoderConfig,
     codec::{Encoder, EncoderCfg},
     record::{Recorder, RecorderContext},
-    vpxcodec::{VpxEncoderConfig, VpxVideoCodecId},
     CodecFormat, Display, EncodeInput, TraitCapturer, TraitPixelBuffer,
+};
+#[cfg(not(target_env = "ohos"))]
+use scrap::{
+    aom::AomEncoderConfig,
+    vpxcodec::{VpxEncoderConfig, VpxVideoCodecId},
 };
 #[cfg(windows)]
 use std::sync::Once;
@@ -1041,8 +1044,10 @@ fn get_recorder(
     #[cfg(not(windows))]
     let root = false;
     let recorder = if record_incoming {
+        #[cfg(not(target_env = "ohos"))]
         use crate::hbbs_http::record_upload;
 
+        #[cfg(not(target_env = "ohos"))]
         let tx = if record_upload::is_enable() {
             let (tx, rx) = std::sync::mpsc::channel();
             record_upload::run(rx);
@@ -1050,6 +1055,8 @@ fn get_recorder(
         } else {
             None
         };
+        #[cfg(target_env = "ohos")]
+        let tx: Option<std::sync::mpsc::Sender<scrap::record::RecordState>> = None;
         Recorder::new(RecorderContext {
             server: true,
             id: Config::get_id(),

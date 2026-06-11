@@ -63,6 +63,10 @@ pub const HW_STRIDE_ALIGN: usize = 0; // recommended by av_frame_get_buffer
 pub mod aom;
 #[cfg(not(any(target_os = "ios", target_env = "ohos")))]
 pub mod camera;
+#[cfg(not(target_env = "ohos"))]
+pub mod record;
+#[cfg(target_env = "ohos")]
+#[path = "record_ohos.rs"]
 pub mod record;
 #[cfg(not(target_env = "ohos"))]
 mod vpx;
