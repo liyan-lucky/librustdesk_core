@@ -46,7 +46,7 @@ screencapturekit = ["cpal/screencapturekit"]
 
 [dependencies]
 async-trait = "0.1"
-scrap = { path = "libs/scrap" }
+
 hbb_common = { path = "libs/hbb_common" }
 libc = "0.2"
 serde_derive = "1.0"
@@ -71,7 +71,7 @@ default-net = "0.14"
 wol-rs = "1.0"
 flutter_rust_bridge = { version = "=1.80", features = ["uuid"], optional = true}
 errno = "0.3"
-rdev = { git = "https://github.com/rustdesk-org/rdev" }
+
 url = { version = "2.3", features = ["serde"] }
 crossbeam-queue = "0.3"
 hex = "0.4"
@@ -179,6 +179,10 @@ bytemuck = "1.23"
 ttf-parser = "0.25"
 
 [target.'cfg(all(target_os = "linux", not(target_env = "ohos")))'.dependencies]
+
+scrap = { path = "libs/scrap" }
+rdev = { git = "https://github.com/rustdesk-org/rdev" }
+
 libxdo-sys = "0.11"
 psimple = { package = "libpulse-simple-binding", version = "2.27" }
 pulse = { package = "libpulse-binding", version = "2.27" }
