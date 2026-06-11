@@ -124,6 +124,7 @@ jobs:
           }
 
       - name: Prepare libopus for magnum-opus
+      - name: Prepare libopus for magnum-opus
         shell: pwsh
         run: |
           $opusVersion = "1.5.2"
@@ -142,24 +143,32 @@ jobs:
           tar -xzf $opusZip -C $opusRoot --strip-components=1
 
           $env:PATH = "C:\msys64\usr\bin;$env:PATH"
+
+          $opusRootUnix = & C:\msys64\usr\bin\cygpath.exe -u $opusRoot
+          $installRootUnix = & C:\msys64\usr\bin\cygpath.exe -u $installRoot
+          $sdkUnix = & C:\msys64\usr\bin\cygpath.exe -u $env:RUSTDESK_HARMONY_HOST_SDK
+
           $bashScript = Join-Path $env:RUNNER_TEMP "build-opus-ohos.sh"
 
-          @"
-          set -euo pipefail
-          cd "$(cygpath -u "$opusRoot")"
+          $lines = @(
+            "set -euo pipefail",
+            "cd `"$opusRootUnix`"",
+            "export CC=`"$sdkUnix/native/llvm/bin/clang.exe`"",
+            "export AR=`"$sdkUnix/native/llvm/bin/llvm-ar.exe`"",
+            "export RANLIB=`"$sdkUnix/native/llvm/bin/llvm-ranlib.exe`"",
+            "export STRIP=`":`"",
+            "export SYSROOT=`"$sdkUnix/native/sysroot`"",
+            "export CFLAGS=`"--target=aarch64-linux-ohos --sysroot=`$SYSROOT -fPIC -D__MUSL__`"",
+            "export LDFLAGS=`"--target=aarch64-linux-ohos --sysroot=`$SYSROOT`"",
+            "./configure --host=aarch64-unknown-linux-gnu --prefix=`"$installRootUnix`" --enable-shared=no --enable-static=yes --disable-extra-programs --disable-doc",
+            "make -j2",
+            "make install"
+          )
 
-          export CC="$(cygpath -u "$env:RUSTDESK_HARMONY_HOST_SDK")/native/llvm/bin/clang.exe"
-          export AR="$(cygpath -u "$env:RUSTDESK_HARMONY_HOST_SDK")/native/llvm/bin/llvm-ar.exe"
-          export RANLIB="$(cygpath -u "$env:RUSTDESK_HARMONY_HOST_SDK")/native/llvm/bin/llvm-ranlib.exe"
-          export STRIP=":"
-          export SYSROOT="$(cygpath -u "$env:RUSTDESK_HARMONY_HOST_SDK")/native/sysroot"
-          export CFLAGS="--target=aarch64-linux-ohos --sysroot=\$SYSROOT -fPIC -D__MUSL__"
-          export LDFLAGS="--target=aarch64-linux-ohos --sysroot=\$SYSROOT"
+          $lines | Set-Content -Path $bashScript -Encoding ascii
 
-          ./configure --host=aarch64-unknown-linux-gnu --prefix="$(cygpath -u "$installRoot")" --enable-shared=no --enable-static=yes --disable-extra-programs --disable-doc
-          make -j2
-          make install
-          "@ | Set-Content -Path $bashScript -Encoding ascii
+          Write-Host "==== build-opus-ohos.sh ===="
+          Get-Content $bashScript
 
           & C:\msys64\usr\bin\bash.exe $bashScript
 
@@ -177,7 +186,6 @@ jobs:
           Write-Host "libopus prepared:"
           Get-Item $header, $libA | Format-List FullName,Length
       - name: Build librustdesk_core.a
-      
         shell: pwsh
         run: |
           & powershell -ExecutionPolicy Bypass -File .\scripts\build_native_bridge.ps1 -TargetTriple "$env:TARGET_TRIPLE" -Profile dev
