@@ -124,7 +124,6 @@ jobs:
           }
 
       - name: Prepare libopus for magnum-opus
-      - name: Prepare libopus for magnum-opus
         shell: pwsh
         run: |
           $opusVersion = "1.5.2"
