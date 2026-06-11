@@ -1,2 +1,4 @@
 target/
 *.log
+rdev-fork/
+rustdesk-master/libs/rdev/

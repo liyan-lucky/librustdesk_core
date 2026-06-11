@@ -306,7 +306,6 @@ dependencies = [
  "serde 1.0.228",
  "serde_derive",
  "windows-sys 0.48.0",
- "wl-clipboard-rs",
  "x11rb 0.13.1",
 ]
 
@@ -6584,7 +6583,7 @@ dependencies = [
 [[package]]
 name = "rdev"
 version = "0.5.0-2"
-source = "git+https://github.com/rustdesk-org/rdev#f9b60b1dd0f3300a1b797d7a74c116683cd232c8"
+source = "git+https://github.com/liyan-lucky/rdev?rev=cf6fe32254d0e31d67f819d61f996372243b99e5#cf6fe32254d0e31d67f819d61f996372243b99e5"
 dependencies = [
  "cocoa 0.24.1",
  "core-foundation 0.9.4",
