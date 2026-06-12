@@ -234,6 +234,14 @@ jobs:
           name: librustdesk_core
           path: librustdesk_core.a
           if-no-files-found: error
+          
+      - name: Check release file
+        shell: pwsh
+        run: |
+          Get-Item ".\librustdesk_core.a" | Format-List Name,Length,FullName
+
+          Write-Host "SHA256:"
+          Get-FileHash ".\librustdesk_core.a" -Algorithm SHA256
 
       - name: Create GitHub Release
         if: success()
