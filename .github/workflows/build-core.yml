@@ -6,7 +6,7 @@ on:
     paths-ignore:
       - "**.md"
   workflow_dispatch:
-  
+
 permissions:
   contents: write
 
@@ -187,6 +187,7 @@ jobs:
 
           Write-Host "libopus prepared:"
           Get-Item $header, $libA | Format-List FullName,Length
+
       - name: Build librustdesk_core.a
         shell: pwsh
         run: |
@@ -215,60 +216,31 @@ jobs:
             _build/build-native-bridge-*.cmd
           if-no-files-found: ignore
 
-      - name: Verify artifact
+      - name: Verify final artifact
         shell: pwsh
         run: |
-          Write-Host "===== Searching Build Outputs ====="
+          $artifact = ".\librustdesk_core.a"
 
-          Get-ChildItem -Path . -Recurse -Filter "*.a" -ErrorAction SilentlyContinue | ForEach-Object {
-            Write-Host "$($_.FullName)"
+          if (-not (Test-Path $artifact)) {
+            throw "librustdesk_core.a was not generated"
           }
 
-          $artifact = $null
+          Write-Host "===== Final Artifact ====="
+          Get-Item $artifact | Format-List Name,Length,FullName
 
-          if (Test-Path ".\librustdesk_core.a") {
-            $artifact = ".\librustdesk_core.a"
-          }
-          elseif (Test-Path ".\entry\src\main\libs\arm64\librustdesk_core.a") {
-            $artifact = ".\entry\src\main\libs\arm64\librustdesk_core.a"
-          }
-          elseif (Test-Path ".\_build\native_rust_core\target\harmony\librustdesk_harmony_bridge.a") {
-            $artifact = ".\_build\native_rust_core\target\harmony\librustdesk_harmony_bridge.a"
-          }
-
-          if (-not $artifact) {
-            throw "No static library found"
-          }
-
-          $source = (Resolve-Path $artifact).Path
-          $target = (Join-Path (Get-Location) "librustdesk_core.a")
-
-          if ($source -ne $target) {
-            Copy-Item -LiteralPath $source -Destination $target -Force
-          } else {
-            Write-Host "Artifact already exists at target path, skip copy."
-          }
-
-          Get-Item ".\librustdesk_core.a" | Format-List Name,Length,FullName
-
-      - name: Upload artifact
-        if: always()
+      - name: Upload Actions artifact
         uses: actions/upload-artifact@v4
         with:
           name: librustdesk_core
-          path: |
-            librustdesk_core.a
-            entry/src/main/libs/arm64/librustdesk_core.a
-            _build/native_rust_core/target/harmony/**
-          if-no-files-found: warn
+          path: librustdesk_core.a
+          if-no-files-found: error
 
-      - name: Create Release
+      - name: Create GitHub Release
         if: success()
         uses: softprops/action-gh-release@v2
         with:
           tag_name: core-${{ github.run_number }}
           name: librustdesk_core Build ${{ github.run_number }}
-          files: |
-            librustdesk_core.a
+          files: librustdesk_core.a
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
