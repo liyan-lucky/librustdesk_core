@@ -126,9 +126,13 @@ impl Decoder {
         self.format
     }
 
+    pub fn valid(&self) -> bool {
+        self.valid
+    }
+
     pub fn handle_video_frame(
         &mut self,
-        _frame: &EncodedVideoFrame,
+        _frame: &hbb_common::message_proto::video_frame::Union,
         _rgb: &mut ImageRgb,
         _texture: &mut ImageTexture,
         _pixelbuffer: &mut bool,

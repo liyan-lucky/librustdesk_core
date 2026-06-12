@@ -69,4 +69,13 @@ impl Recorder {
     pub fn new(_ctx: RecorderContext) -> ResultType<Self> {
         Ok(Self { inner: None })
     }
+
+    pub fn write_frame(
+        &mut self,
+        _frame: &hbb_common::message_proto::video_frame::Union,
+        _w: usize,
+        _h: usize,
+    ) -> ResultType<()> {
+        Ok(())
+    }
 }
