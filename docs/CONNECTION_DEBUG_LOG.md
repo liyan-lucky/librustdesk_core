@@ -704,3 +704,10 @@
   - APP build passed after switching APP tasks to Hvigor project mode.
   - HAP verifier passed native library, dependency, bundle, and signature checks.
   - 50-check connection chain audit passed.
+
+## 2026-06-12 waiting video stream follow-up
+
+- Rechecked both directions. Outgoing control sessions still have the real frame path: `on_rgba -> publish_real_video_frame -> video-frame`.
+- Incoming/controlled-side sharing was still able to report `incomingReady=true` even though Harmony screen capture and the desktop server thread were not wired.
+- Fixed `main_start_service(true)` to return `incomingReady=false` plus a clear `lastError/detailMessage` while the real incoming video pipeline is missing.
+- The App side now rolls back `serviceEnabled` and `allowRemoteControl` when `ScreenCaptureService.startCapture()` fails, instead of requesting native incoming and letting remote clients wait forever for video.

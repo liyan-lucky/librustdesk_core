@@ -124,3 +124,9 @@ See `scripts/rename_mapping.js` for complete mapping.
   - `arboard` without wayland-data-control feature
   - Independent `rendezvous_mediator_ohos.rs` for LAN discovery
   - `harmony_bridge/core.rs` as session entry point (not flutter_ffi.rs)
+
+## Current Incoming Service Status
+
+- Outgoing remote-control sessions use the real RustDesk session path and publish video through `on_rgba -> publish_real_video_frame -> video-frame`.
+- Harmony incoming/controlled-side screen sharing is not available yet because the desktop server thread and Harmony screen-capture pipeline are not wired on this target.
+- `main_start_service(true)` must return `incomingReady=false` with a clear error while that pipeline is missing. Do not mark incoming ready just because rendezvous/options were refreshed; that makes remote clients wait forever for a video stream that cannot exist.

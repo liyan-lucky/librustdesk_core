@@ -453,6 +453,14 @@ cd $VSCODE_ROOT_LINUX/11_Rustdesk_harmonyos/scripts
 - 前端共享开关的多次轮询已收敛为单次延迟刷新；最新 USB 日志中 `incoming-service-requested` 只出现 1 次，App 进程保持稳定。
 - 屏幕采集仍是未完成项：系统截图 fallback 已确认会崩溃并被禁用，真实被控画面需要后续补 Harmony 可用的官方录屏/采集链路。
 
+## 2026-06-12 incoming video-stream status
+
+- Outgoing controller sessions still use the real RustDesk path: `on_rgba -> publish_real_video_frame -> video-frame`.
+- Incoming/controlled-side sharing has no real Harmony screen-capture or desktop server pipeline yet.
+- `main_start_service(true)` now returns `incomingReady=false` with `lastError/detailMessage` when the pipeline is missing. This avoids advertising the Harmony device as controllable and making remote clients wait forever for a video stream.
+- The nested historical copy `rustdesk-master/src/harmony_bridge/harmony_bridge/core.rs` was updated the same way to avoid future accidental reuse.
+- Windows native build verification exposed a script issue: the resolved OHOS SDK must be written back to `RUSTDESK_HARMONY_HOST_SDK`/`OHOS_SDK_HOME` before MSYS builds libsodium, otherwise `aarch64-unknown-linux-ohos-clang.cmd` reports `OHOS SDK not found`.
+
 ## 2026-06-12 verified current core
 
 - Upstream compatibility: `RustDesk 1.4.7`.

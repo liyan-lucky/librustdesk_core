@@ -265,26 +265,27 @@ pub fn main_start_service(
     apply_server_options(server, relay_server, api_server);
 
     if enabled {
-        config::Config::set_option("stop-service".to_owned(), "N".to_owned());
-        *incoming_service_started().lock().unwrap() = true;
-        crate::common::set_server_running(true);
+        config::Config::set_option("stop-service".to_owned(), "Y".to_owned());
+        *incoming_service_started().lock().unwrap() = false;
+        crate::common::set_server_running(false);
         crate::RendezvousMediator::restart();
+        let detail = "Harmony incoming service is unavailable because the desktop server and screen capture pipeline are not wired on this target.";
         queue_event(
-            "incoming-service-requested",
-            "Harmony bridge applied incoming service options without launching the desktop server thread.",
+            "incoming-service-unavailable",
+            detail,
             "",
         );
         json!({
             "adapter": "official-native",
             "coreReady": true,
-            "incomingReady": true,
+            "incomingReady": false,
             "displayId": get_local_option("id"),
             "fingerprint": "",
             "directAddress": "",
             "server": server,
-            "statusSummary": "Incoming service requested",
-            "detailMessage": "Harmony bridge applied incoming service options. Desktop server thread launch is disabled on Harmony to avoid appspawn exit.",
-            "lastError": "",
+            "statusSummary": "Incoming service unavailable",
+            "detailMessage": detail,
+            "lastError": detail,
             "sessionStage": get_session_stage(),
             "activePeerId": get_active_peer_id(),
         })

@@ -343,6 +343,9 @@ function Ensure-LibsodiumStaticLibrary {
 set -euo pipefail
 cd "$sourceMsys"
 export PATH="/usr/bin:${sdkLlvmBinMsys}:`$PATH"
+export RUSTDESK_HARMONY_HOST_SDK="$SdkDirectory"
+export OHOS_SDK_HOME="$SdkDirectory"
+export OHOS_NDK_HOME="$SdkDirectory"
 export CC="$linkerMsys"
 export LD="$sdkLlvmBinMsys/ld.lld.exe"
 export AR="$sdkLlvmBinMsys/llvm-ar.exe"
@@ -455,6 +458,9 @@ if (-not $resolvedHostSdkDir) {
 }
 $hostSdkDir = Ensure-NoSpaceSdkMirror -SdkDirectory $resolvedHostSdkDir -MirrorDirectory $hostSdkMirrorDir
 Write-Log "Host SDK Dir: $hostSdkDir"
+$env:RUSTDESK_HARMONY_HOST_SDK = $hostSdkDir
+$env:OHOS_SDK_HOME = $hostSdkDir
+$env:OHOS_NDK_HOME = $hostSdkDir
 
 $sdkLlvmBin = Join-Path $hostSdkDir "native\llvm\bin"
 $sdkLdExe = Join-Path $sdkLlvmBin "ld.lld.exe"

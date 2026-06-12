@@ -1,4 +1,5 @@
 target/
 *.log
+entry/
 rdev-fork/
 rustdesk-master/libs/rdev/
