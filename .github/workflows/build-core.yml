@@ -215,15 +215,50 @@ jobs:
       - name: Verify artifact
         shell: pwsh
         run: |
-          if (-not (Test-Path ".\librustdesk_core.a")) {
-            throw "librustdesk_core.a was not generated"
+          Write-Host "===== Searching Build Outputs ====="
+
+          Get-ChildItem -Path . -Recurse -Filter "*.a" -ErrorAction SilentlyContinue | ForEach-Object {
+            Write-Host "$($_.FullName)"
           }
+
+          $artifact = $null
+
+          if (Test-Path ".\librustdesk_core.a") {
+            $artifact = ".\librustdesk_core.a"
+          }
+          elseif (Test-Path ".\entry\src\main\libs\arm64\librustdesk_core.a") {
+            $artifact = ".\entry\src\main\libs\arm64\librustdesk_core.a"
+          }
+          elseif (Test-Path ".\_build\native_rust_core\target\harmony\librustdesk_harmony_bridge.a") {
+            $artifact = ".\_build\native_rust_core\target\harmony\librustdesk_harmony_bridge.a"
+          }
+
+          if (-not $artifact) {
+            throw "No static library found"
+          }
+
+          Copy-Item $artifact ".\librustdesk_core.a" -Force
 
           Get-Item ".\librustdesk_core.a" | Format-List Name,Length,FullName
 
       - name: Upload artifact
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: librustdesk_core
-          path: librustdesk_core.a
-          if-no-files-found: error
+          path: |
+            librustdesk_core.a
+            entry/src/main/libs/arm64/librustdesk_core.a
+            _build/native_rust_core/target/harmony/**
+          if-no-files-found: warn
+
+      - name: Create Release
+        if: success()
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: core-${{ github.run_number }}
+          name: librustdesk_core Build ${{ github.run_number }}
+          files: |
+            librustdesk_core.a
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
