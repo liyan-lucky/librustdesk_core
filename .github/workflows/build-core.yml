@@ -237,7 +237,14 @@ jobs:
             throw "No static library found"
           }
 
-          Copy-Item $artifact ".\librustdesk_core.a" -Force
+          $source = (Resolve-Path $artifact).Path
+          $target = (Join-Path (Get-Location) "librustdesk_core.a")
+
+          if ($source -ne $target) {
+            Copy-Item -LiteralPath $source -Destination $target -Force
+          } else {
+            Write-Host "Artifact already exists at target path, skip copy."
+          }
 
           Get-Item ".\librustdesk_core.a" | Format-List Name,Length,FullName
 
