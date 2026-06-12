@@ -25,9 +25,8 @@ jobs:
       VCPKG_INSTALLED_ROOT: ${{ github.workspace }}\_build\vcpkg\installed
       RUST_BACKTRACE: full
       CARGO_BUILD_JOBS: 1
-      CARGO_PROFILE_RELEASE_LTO: "false"
-      CARGO_PROFILE_RELEASE_CODEGEN_UNITS: 16
-      CARGO_PROFILE_RELEASE_STRIP: "false"
+      RELEASE_ARTIFACT_MIN_BYTES: "100000000"
+      RELEASE_ARTIFACT_MAX_BYTES: "250000000"
 
     steps:
       - name: Checkout
@@ -191,7 +190,7 @@ jobs:
       - name: Build librustdesk_core.a
         shell: pwsh
         run: |
-          & powershell -ExecutionPolicy Bypass -File .\scripts\build_native_bridge.ps1 -TargetTriple "$env:TARGET_TRIPLE" -Profile dev
+          & powershell -ExecutionPolicy Bypass -File .\scripts\build_native_bridge.ps1 -TargetTriple "$env:TARGET_TRIPLE" -Profile release
 
           if ($LASTEXITCODE -ne 0) {
             throw "build_native_bridge.ps1 failed with exit code $LASTEXITCODE"
@@ -226,7 +225,14 @@ jobs:
           }
 
           Write-Host "===== Final Artifact ====="
-          Get-Item $artifact | Format-List Name,Length,FullName
+          $artifactItem = Get-Item $artifact
+          $artifactItem | Format-List Name,Length,FullName
+
+          $minBytes = [int64]$env:RELEASE_ARTIFACT_MIN_BYTES
+          $maxBytes = [int64]$env:RELEASE_ARTIFACT_MAX_BYTES
+          if ($artifactItem.Length -lt $minBytes -or $artifactItem.Length -gt $maxBytes) {
+            throw "Unexpected librustdesk_core.a size: $($artifactItem.Length) bytes. Expected release artifact between $minBytes and $maxBytes bytes; check Cargo profile before publishing."
+          }
 
       - name: Upload Actions artifact
         uses: actions/upload-artifact@v4

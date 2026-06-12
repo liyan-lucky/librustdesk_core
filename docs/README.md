@@ -7,6 +7,7 @@
 | 文件 | 说明 |
 |------|------|
 | `CORE.md` | 核心架构、可复现编译、桥接函数完整说明（369个函数）、CMake链接、编译问题 |
+| `LESSONS_LEARNED.md` | 经验教训和易复发构建问题 |
 | `BUILD_ARCHIVE.md` | 历史构建、脚本、Ubuntu路径和早期会话归档 |
 | `CONNECTION_DEBUG_LOG.md` | 连接问题逐轮排查记录 |
 | `UBUNTU_CROSS_COMPILE_GUIDE.md` | Ubuntu 交叉编译指南 |
@@ -21,9 +22,11 @@
 2. 运行代码生成脚本（如需要）：`node scripts/regenerate_all.js`
 3. 本地验证编译：`powershell -File scripts/build_native_bridge.ps1`
 4. Git push 到远端
-5. GitHub Actions 自动构建，生成 `librustdesk_core.a`
+5. GitHub Actions 自动用 Cargo `release` profile 构建，生成 `librustdesk_core.a`
 6. 下载 Release 产物，放入 HAP 项目 `entry/src/main/libs/arm64/`
 7. 同步 `cpp/` 文件到 HAP 项目 `entry/src/main/cpp/`（如桥接层有更新）
+
+> 发布前必须检查 `.a` 体积。当前 release 基准约 `132 MiB`；如果 GitHub Actions 产物接近 `568 MiB`，优先检查 workflow 是否误用了 Cargo `dev` profile 或保留了 debug 符号。
 
 ## HAP 项目（11_Rustdesk_harmonyos）文档
 

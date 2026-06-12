@@ -12,6 +12,7 @@
   - Rust 桥接层、C++ 桥接层、代码生成脚本均在 13 项目维护
   - 核心修改流程：13 项目修改 → git push → GitHub Actions 构建 → 下载 → 放入 11 项目
   - GitHub Releases：`https://github.com/liyan-lucky/librustdesk_core/releases`
+- GitHub Actions 发布核心时必须使用 Cargo `release` profile，并在上传前检查 `.a` 体积；`dev` profile 会把 debug 信息打进 staticlib，导致 release asset 膨胀到约 `568 MiB`。
 - 当前页面应显示三个核心状态入口：
   - `Adapter`
   - `Native Module`
@@ -98,6 +99,7 @@ Native core:
 - Build time observed: `2026-06-12 02:31`
 - FNV-1a 1MB: `11786fd9`
 - SHA256: `A200A839F2B361C512A94CE5E2A7081F442438FF62239C90CFFAD90FA98AADC8`
+- 已知异常 CI release：`core-62` 由 Cargo `dev` profile 生成，产物大小为 `595,083,124` bytes (`567.52 MiB`)，不要作为 HAP 核心来源使用。
 
 HAP:
 
@@ -130,9 +132,11 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts\build_native_bridge.
 推荐发布流程：
 
 1. 在 `%VSCODE_ROOT%\13_librustdesk_core` 修改 Rust/C++/生成脚本。
-2. 提交并推送 13 项目，触发 GitHub Actions 构建 `librustdesk_core.a`。
-3. 发布或更新 `v1.4.7-ohos` release asset。
-4. 11 项目的 GitHub Actions 通过 `RUSTDESK_CORE_URL` 下载该 `.a`，并用 `RUSTDESK_CORE_SHA256` 校验。
+2. 本地或 CI 必须使用 `release` profile；Windows 默认命令 `scripts\build_native_bridge.ps1` 已默认 `release`，GitHub Actions 也必须传 `-Profile release`。
+3. 提交并推送 13 项目，触发 GitHub Actions 构建 `librustdesk_core.a`。
+4. 发布前检查 `.a` 体积，当前基准约 `132 MiB`，workflow 体积闸门为 `100,000,000` 到 `250,000,000` bytes。
+5. 发布或更新 `v1.4.7-ohos` release asset。
+6. 11 项目的 GitHub Actions 通过 `RUSTDESK_CORE_URL` 下载该 `.a`，并用 `RUSTDESK_CORE_SHA256` 校验。
 
 当前 11 项目使用：
 

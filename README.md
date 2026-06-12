@@ -84,6 +84,8 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts\build_native_bridge.
 GitHub Actions workflow: `.github/workflows/build-core.yml`
 - Runs on `windows-2022`
 - Rust toolchain: 1.88.0
+- Builds with Cargo `release` profile from `native_rust_core/Cargo.toml`
+- Rejects suspicious release assets outside `100,000,000` to `250,000,000` bytes
 - Output: `librustdesk_core.a` uploaded as release asset
 
 ### Output
