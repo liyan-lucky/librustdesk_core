@@ -242,5 +242,6 @@ jobs:
           tag_name: core-${{ github.run_number }}
           name: librustdesk_core Build ${{ github.run_number }}
           files: librustdesk_core.a
+          overwrite_files: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
