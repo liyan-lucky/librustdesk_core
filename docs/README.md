@@ -1,0 +1,41 @@
+# librustdesk_core 文档索引
+
+> 核心项目文档。所有核心相关的架构、编译、桥接函数、调试文档均在此维护。
+
+## 文档列表
+
+| 文件 | 说明 |
+|------|------|
+| `CORE.md` | 核心架构、可复现编译、桥接函数完整说明（369个函数）、CMake链接、编译问题 |
+| `BUILD_ARCHIVE.md` | 历史构建、脚本、Ubuntu路径和早期会话归档 |
+| `CONNECTION_DEBUG_LOG.md` | 连接问题逐轮排查记录 |
+| `UBUNTU_CROSS_COMPILE_GUIDE.md` | Ubuntu 交叉编译指南 |
+| `SESSION3_SUMMARY.md` | 会话3总结 |
+| `WINDOWS_SERVICE_OPTIMIZATION.md` | Windows 服务优化 |
+| `FUNCTION_LOGIC_AUDIT_2026-06-05.md` | 功能逻辑审计(6月5日) |
+| `FUNCTION_LOGIC_AUDIT_2026-06-06.md` | 功能逻辑审计(6月6日) |
+
+## 核心修改流程
+
+1. 在本项目中修改 Rust/C++/TS 桥接代码
+2. 运行代码生成脚本（如需要）：`node scripts/regenerate_all.js`
+3. 本地验证编译：`powershell -File scripts/build_native_bridge.ps1`
+4. Git push 到远端
+5. GitHub Actions 自动构建，生成 `librustdesk_core.a`
+6. 下载 Release 产物，放入 HAP 项目 `entry/src/main/libs/arm64/`
+7. 同步 `cpp/` 文件到 HAP 项目 `entry/src/main/cpp/`（如桥接层有更新）
+
+## HAP 项目（11_Rustdesk_harmonyos）文档
+
+HAP 项目保留的文档聚焦于应用层：
+
+| 文件 | 说明 |
+|------|------|
+| `AGENT_MEMORY.md` | AI助手工作规则、经验库、用户偏好 |
+| `CORE.md` | 精简版：核心状态、HAP构建安装、运行验证清单 |
+| `DESIGN.md` | UI/构建/真机测试设计约束 |
+| `UI.md` | UI布局、图标、核心页卡片细节 |
+| `FILES.md` | 文件职责和外部依赖目录 |
+| `PROGRESS.md` | 功能进度、已完成事项、重点问题 |
+| `ISSUES.md` | 问题库和易复发坑 |
+| `GIT_PUBLISH.md` | GitHub发布说明 |
