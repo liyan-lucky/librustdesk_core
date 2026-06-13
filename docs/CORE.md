@@ -1204,3 +1204,35 @@ HarmonyOS 版使用 **staticlib + CMake + NAPI** 架构：
 5. **session_alternative_codecs → session_get_alternative_codecs**：全链路更新与官方对齐
 6. **核心详情页增强**：添加桥接函数数量、NAPI注册数、核心版本号、设备ID、指纹、上游版本等属性
 - **尚未实现的官方函数**（stub存在但未真正实现）：`session_get_rgba`（需要GPU纹理渲染支持）
+## 2026-06-13 OHOS VP8/VP9 解码修复
+
+### 现象
+
+- `core-64` 修复了 incoming 假就绪：`initializeRuntimeFn` 返回 `coreReady=true`、`incomingReady=false`。
+- 手机上连接 Windows peer `1283267036` 能进入 `session-connected`，并收到 `peer-info`、`quality-status`。
+- `quality-status` 显示 `codec_format=VP9`，但日志持续出现 `pullLatestVideoFrame null connected=true hasFrame=false lastFrameId=0`，没有 `video-frame` 事件。
+
+### 根因
+
+- `libs/scrap/src/common/codec_ohos.rs` 之前声明 `ability_vp9=1`、`prefer=VP9`，但 `Decoder::handle_video_frame()` 直接返回 `video decoding not fully supported on ohos`。
+- 官方会话链路只有在 `handler.handle_frame(...)` 解码成功后才会进入 `HarmonyHandler::on_rgba()`，再发布 `video-frame`。
+- 因此问题不是 `session_next_rgba()` 空实现优先导致，而是 OHOS codec stub 从未把 VP9 包解码成 `ImageRgb`。
+
+### 修改
+
+- OHOS 目标重新启用 `scrap` 的 `vpxcodec`、`vpx` 和 `convert` 模块。
+- `scrap/build.rs` 在 `target_env=ohos` 时生成 `vpx_ffi.rs`、`yuv_ffi.rs`，并链接 `libvpx`、`libyuv`。
+- `codec_ohos.rs` 使用 `VpxDecoder` 解码 VP8/VP9，并通过 `GoogleImage::to()` 转成 RGBA。
+- `scripts/build_native_bridge.ps1` 在冷启动环境自动准备 `libsodium`、`libvpx 1.15.2`、`libyuv 0faf8dd0e004520a61a603a4d2996d5ecc80dc3f`。
+- `LIBCLANG_PATH` 明确设置到 OpenHarmony SDK LLVM `bin`，保证 bindgen 在线上 runner 可找到 `libclang.dll`。
+
+### 验证
+
+- `powershell -NoProfile -ExecutionPolicy Bypass -File scripts\build_native_bridge.ps1` 通过。
+- 冷启动依赖测试通过：空 `VCPKG_INSTALLED_ROOT` 下成功构建 `libvpx.a` 和 `libyuv.a`，随后 Cargo 构建退出 `0`。
+- 本地产物 Size: `128,881,550` bytes；SHA256: `777B75B02384093618AE0E8BA880192439B9950D94C29DDE1F6ED783F9B47AEA`。
+
+### 经验
+
+- 看到 `session-connected` + `quality-status codec_format=VP9` 但没有 `video-frame` 时，先检查 `codec_ohos.rs` 是否真的解码，不能只追 `harmony_next_rgba()`。
+- 只要 `scrap` 开始在 OHOS 编译 VPX/YUV 路径，`EncoderCfg`、`base_bitrate()`、`codec_thread_num()` 这些旧 stub 也必须和共享模块签名保持一致。

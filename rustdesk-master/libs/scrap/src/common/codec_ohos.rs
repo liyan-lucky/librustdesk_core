@@ -3,12 +3,16 @@ use std::sync::{Arc, Mutex};
 use hbb_common::{
     log,
     message_proto::{
-        supported_decoding::PreferCodec, Chroma, EncodedVideoFrame, SupportedDecoding,
-        SupportedEncoding, VideoFrame,
+        supported_decoding::PreferCodec, video_frame, Chroma, EncodedVideoFrame,
+        EncodedVideoFrames, SupportedDecoding, SupportedEncoding, VideoFrame,
     },
     ResultType,
 };
 
+use super::{
+    vpxcodec::{self, VpxDecoder, VpxDecoderConfig, VpxEncoderConfig, VpxVideoCodecId},
+    GoogleImage,
+};
 use crate::{CodecFormat, EncodeInput, EncodeYuvFormat, ImageRgb, ImageTexture};
 
 lazy_static::lazy_static! {
@@ -20,7 +24,9 @@ lazy_static::lazy_static! {
 pub const ENCODE_NEED_SWITCH: &'static str = "ENCODE_NEED_SWITCH";
 
 #[derive(Debug, Clone)]
-pub enum EncoderCfg {}
+pub enum EncoderCfg {
+    VPX(VpxEncoderConfig),
+}
 
 pub trait EncoderApi {
     fn new(cfg: EncoderCfg, i444: bool) -> ResultType<Self>
@@ -41,6 +47,8 @@ pub struct Encoder;
 pub struct Decoder {
     format: CodecFormat,
     valid: bool,
+    vp8: Option<VpxDecoder>,
+    vp9: Option<VpxDecoder>,
 }
 
 #[derive(Debug, Clone)]
@@ -95,7 +103,7 @@ impl Decoder {
         mark_unsupported: &[CodecFormat],
     ) -> SupportedDecoding {
         let mut decoding = SupportedDecoding {
-            ability_vp8: 0,
+            ability_vp8: 1,
             ability_vp9: 1,
             ability_av1: 0,
             ability_h264: 0,
@@ -118,8 +126,33 @@ impl Decoder {
 
     pub fn new(format: CodecFormat, _luid: Option<i64>) -> Decoder {
         log::info!("try create new decoder on ohos, format: {format:?}");
-        let valid = format == CodecFormat::VP9;
-        Decoder { format, valid }
+        let vp8 = VpxDecoder::new(VpxDecoderConfig {
+            codec: VpxVideoCodecId::VP8,
+        })
+        .map_err(|err| {
+            log::error!("failed to create OHOS VP8 decoder: {err}");
+            err
+        })
+        .ok();
+        let vp9 = VpxDecoder::new(VpxDecoderConfig {
+            codec: VpxVideoCodecId::VP9,
+        })
+        .map_err(|err| {
+            log::error!("failed to create OHOS VP9 decoder: {err}");
+            err
+        })
+        .ok();
+        let valid = match format {
+            CodecFormat::VP8 => vp8.is_some(),
+            CodecFormat::VP9 => vp9.is_some(),
+            _ => false,
+        };
+        Decoder {
+            format,
+            valid,
+            vp8,
+            vp9,
+        }
     }
 
     pub fn format(&self) -> CodecFormat {
@@ -132,36 +165,94 @@ impl Decoder {
 
     pub fn handle_video_frame(
         &mut self,
-        _frame: &hbb_common::message_proto::video_frame::Union,
-        _rgb: &mut ImageRgb,
+        frame: &video_frame::Union,
+        rgb: &mut ImageRgb,
         _texture: &mut ImageTexture,
         _pixelbuffer: &mut bool,
-        _chroma: &mut Option<Chroma>,
+        chroma: &mut Option<Chroma>,
     ) -> ResultType<bool> {
-        if !self.valid {
-            return Err(hbb_common::anyhow::anyhow!("decoder not valid on ohos"));
+        match frame {
+            video_frame::Union::Vp8s(vp8s) => {
+                if let Some(vp8) = &mut self.vp8 {
+                    Self::handle_vpxs_video_frame(vp8, vp8s, rgb, chroma)
+                } else {
+                    Err(hbb_common::anyhow::anyhow!("vp8 decoder not available on ohos"))
+                }
+            }
+            video_frame::Union::Vp9s(vp9s) => {
+                if let Some(vp9) = &mut self.vp9 {
+                    Self::handle_vpxs_video_frame(vp9, vp9s, rgb, chroma)
+                } else {
+                    Err(hbb_common::anyhow::anyhow!("vp9 decoder not available on ohos"))
+                }
+            }
+            _ => Err(hbb_common::anyhow::anyhow!(
+                "unsupported video frame type on ohos"
+            )),
         }
-        Err(hbb_common::anyhow::anyhow!(
-            "video decoding not fully supported on ohos"
-        ))
     }
 
     pub fn decode(&mut self, data: &[u8], rgb: &mut ImageRgb) -> ResultType<bool> {
-        if !self.valid {
-            return Err(hbb_common::anyhow::anyhow!("decoder not valid on ohos"));
+        let mut frames = EncodedVideoFrames::new();
+        frames.frames.push(EncodedVideoFrame {
+            data: hbb_common::bytes::Bytes::from(data.to_vec()),
+            ..Default::default()
+        });
+        let mut chroma = None;
+        match self.format {
+            CodecFormat::VP8 => {
+                if let Some(vp8) = &mut self.vp8 {
+                    Self::handle_vpxs_video_frame(vp8, &frames, rgb, &mut chroma)
+                } else {
+                    Err(hbb_common::anyhow::anyhow!("vp8 decoder not available on ohos"))
+                }
+            }
+            CodecFormat::VP9 => {
+                if let Some(vp9) = &mut self.vp9 {
+                    Self::handle_vpxs_video_frame(vp9, &frames, rgb, &mut chroma)
+                } else {
+                    Err(hbb_common::anyhow::anyhow!("vp9 decoder not available on ohos"))
+                }
+            }
+            _ => Err(hbb_common::anyhow::anyhow!(
+                "unsupported decoder format on ohos"
+            )),
         }
-        Err(hbb_common::anyhow::anyhow!(
-            "decoding not fully supported on ohos"
-        ))
+    }
+
+    fn handle_vpxs_video_frame(
+        decoder: &mut VpxDecoder,
+        vpxs: &EncodedVideoFrames,
+        rgb: &mut ImageRgb,
+        chroma: &mut Option<Chroma>,
+    ) -> ResultType<bool> {
+        let mut last_frame = vpxcodec::Image::new();
+        for vpx in vpxs.frames.iter() {
+            for frame in decoder.decode(&vpx.data)? {
+                drop(last_frame);
+                last_frame = frame;
+            }
+        }
+        for frame in decoder.flush()? {
+            drop(last_frame);
+            last_frame = frame;
+        }
+        if last_frame.is_null() {
+            Ok(false)
+        } else {
+            *chroma = Some(last_frame.chroma());
+            last_frame.to(rgb);
+            Ok(true)
+        }
     }
 }
 
-pub fn base_bitrate(_w: usize, _h: usize) -> u32 {
+pub fn base_bitrate(_w: u32, _h: u32) -> u32 {
     0
 }
 
-pub fn codec_thread_num() -> usize {
-    1
+pub fn codec_thread_num(limit: usize) -> usize {
+    std::cmp::max(1, std::cmp::min(limit, 4))
 }
 
 pub fn enable_hwcodec_option() -> bool {

@@ -73,6 +73,8 @@ RustDesk Server / Peer
 powershell -NoProfile -ExecutionPolicy Bypass -File scripts\build_native_bridge.ps1
 ```
 
+The Windows script prepares target static dependencies before Cargo runs. On a cold runner it builds `libsodium`, downloads and builds `libvpx` `1.15.2`, downloads and builds `libyuv` revision `0faf8dd0e004520a61a603a4d2996d5ecc80dc3f`, and installs them under `VCPKG_INSTALLED_ROOT\arm64-linux`.
+
 ### Linux
 
 ```bash
@@ -125,8 +127,9 @@ See `scripts/rename_mapping.js` for complete mapping.
   - Independent `rendezvous_mediator_ohos.rs` for LAN discovery
   - `harmony_bridge/core.rs` as session entry point (not flutter_ffi.rs)
 
-## Current Incoming Service Status
+## Current Video and Incoming Service Status
 
 - Outgoing remote-control sessions use the real RustDesk session path and publish video through `on_rgba -> publish_real_video_frame -> video-frame`.
+- OHOS outgoing viewer video decode uses software VP8/VP9 through `libvpx` plus YUV-to-RGBA conversion through `libyuv`. `codec_ohos.rs` must not advertise VP9 support unless `handle_video_frame()` can decode frames and call `GoogleImage::to()`.
 - Harmony incoming/controlled-side screen sharing is not available yet because the desktop server thread and Harmony screen-capture pipeline are not wired on this target.
 - `main_start_service(true)` must return `incomingReady=false` with a clear error while that pipeline is missing. Do not mark incoming ready just because rendezvous/options were refreshed; that makes remote clients wait forever for a video stream that cannot exist.

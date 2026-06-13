@@ -2,6 +2,8 @@
 
 > 核心项目文档。所有核心相关的架构、编译、桥接函数、调试文档均在此维护。
 
+> 2026-06-13 经验：如果手机端已 `session-connected` 且 `quality-status` 显示 `codec_format=VP9`，但没有 `video-frame`，先看 `CORE.md` 的 OHOS VP8/VP9 解码修复记录和 `CONNECTION_DEBUG_LOG.md`，不要只查 `session_next_rgba()`。
+
 ## 文档列表
 
 | 文件 | 说明 |

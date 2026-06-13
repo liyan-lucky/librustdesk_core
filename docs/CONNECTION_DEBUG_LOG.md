@@ -705,6 +705,17 @@
   - HAP verifier passed native library, dependency, bundle, and signature checks.
   - 50-check connection chain audit passed.
 
+## 2026-06-13 core-64 phone validation and VP9 decode fix
+
+- Online core run `27449330041` produced `core-64`; phone install with that core started normally and reported `coreReady=true`, `incomingReady=false`.
+- Wireless target `192.168.11.100:36169` stayed online, `com.open.rundesk` process remained alive, and no current-process native fatal crash was found.
+- The outgoing session to Windows peer `1283267036` reached `session-connected` and received `peer-info`.
+- The stream negotiated `codec_format=VP9`, but there were still no `video-frame` events. The phone repeatedly logged `pullLatestVideoFrame null connected=true hasFrame=false lastFrameId=0`.
+- Root cause moved from incoming false-ready to outgoing decode: `codec_ohos.rs` advertised VP9 support but returned `video decoding not fully supported on ohos` from `handle_video_frame()`.
+- Fix: compile OHOS `scrap` with `vpxcodec`, `vpx`, and `convert`; generate/link `libvpx` and `libyuv`; decode VP8/VP9 packets through `VpxDecoder`; convert the last decoded frame through `GoogleImage::to()` so `HarmonyHandler::on_rgba()` can publish `video-frame`.
+- Build validation passed locally with cached deps and with a cold temporary `VCPKG_INSTALLED_ROOT` that built `libvpx 1.15.2` and `libyuv 0faf8dd0e004520a61a603a4d2996d5ecc80dc3f` from source.
+- New local core size/hash before pushing: `128,881,550` bytes, SHA256 `777B75B02384093618AE0E8BA880192439B9950D94C29DDE1F6ED783F9B47AEA`.
+
 ## 2026-06-12 waiting video stream follow-up
 
 - Rechecked both directions. Outgoing control sessions still have the real frame path: `on_rgba -> publish_real_video_frame -> video-frame`.

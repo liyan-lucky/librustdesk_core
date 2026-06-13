@@ -246,9 +246,12 @@ fn main() {
     env::set_var("CARGO_CFG_TARGET_FEATURE", "crt-static");
 
     if target_env == "ohos" {
-        // OHOS does not need vcpkg native capture/codec libraries.
-        // Only common types (ImageRgb, ImageFormat, etc.) are used.
-        // Emit the cfg flag so the ohos module is selected.
+        // OHOS has no desktop capture stack here, but the controller still
+        // needs software VP8/VP9 decode and YUV->RGBA conversion for incoming
+        // remote frames.
+        find_package("libyuv");
+        gen_vcpkg_package("libvpx", "vpx_ffi.h", "vpx_ffi.rs", "^[vV].*");
+        gen_vcpkg_package("libyuv", "yuv_ffi.h", "yuv_ffi.rs", ".*");
         return;
     }
 

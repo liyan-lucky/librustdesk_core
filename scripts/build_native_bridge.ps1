@@ -290,6 +290,308 @@ function Stage-LibsodiumHostImportLibrary {
   Copy-Item -LiteralPath $hostImportLibrary -Destination (Join-Path $LibDirectory "libsodium.lib") -Force
 }
 
+function Get-BuildJobCount {
+  $jobs = 4
+  $parsedJobs = 0
+  if ([int]::TryParse($env:NUMBER_OF_PROCESSORS, [ref]$parsedJobs) -and $parsedJobs -gt 0) {
+    $jobs = $parsedJobs
+  }
+
+  return $jobs
+}
+
+function Assert-PathInsideRoot {
+  param(
+    [string]$Path,
+    [string]$RootPath,
+    [string]$Description
+  )
+
+  $trimChars = [char[]]@('\', '/')
+  $fullPath = [System.IO.Path]::GetFullPath($Path).TrimEnd($trimChars)
+  $fullRoot = [System.IO.Path]::GetFullPath($RootPath).TrimEnd($trimChars)
+  $comparison = [System.StringComparison]::OrdinalIgnoreCase
+  if (-not ($fullPath.Equals($fullRoot, $comparison) -or $fullPath.StartsWith("$fullRoot\", $comparison) -or $fullPath.StartsWith("$fullRoot/", $comparison))) {
+    throw "$Description is outside the expected root. Path: $fullPath Root: $fullRoot"
+  }
+}
+
+function Remove-DirectoryInsideRoot {
+  param(
+    [string]$Path,
+    [string]$RootPath,
+    [string]$Description
+  )
+
+  if (-not (Test-Path $Path)) {
+    return
+  }
+
+  Assert-PathInsideRoot -Path $Path -RootPath $RootPath -Description $Description
+  Remove-Item -LiteralPath $Path -Recurse -Force
+}
+
+function Ensure-ArchiveSource {
+  param(
+    [string]$Name,
+    [string]$Url,
+    [string]$ArchivePath,
+    [string]$SourceDirectory,
+    [string]$RequiredRelativePath,
+    [string]$BuildRoot
+  )
+
+  $requiredPath = Join-Path $SourceDirectory $RequiredRelativePath
+  if (Test-Path $requiredPath) {
+    Write-Log "$Name source already available at: $SourceDirectory"
+    return
+  }
+
+  Remove-DirectoryInsideRoot -Path $SourceDirectory -RootPath $BuildRoot -Description "$Name source directory"
+  New-Item -ItemType Directory -Path $SourceDirectory -Force | Out-Null
+  New-Item -ItemType Directory -Path (Split-Path -Parent $ArchivePath) -Force | Out-Null
+
+  if (-not (Test-Path $ArchivePath)) {
+    Write-Log "Downloading $Name from: $Url"
+    Invoke-WebRequest -Uri $Url -OutFile $ArchivePath
+  } else {
+    Write-Log "$Name archive already available at: $ArchivePath"
+  }
+
+  Write-Log "Extracting $Name to: $SourceDirectory"
+  & tar -xzf $ArchivePath -C $SourceDirectory --strip-components=1
+  if ($LASTEXITCODE -ne 0) {
+    throw "Failed to extract $Name archive: $ArchivePath"
+  }
+
+  if (-not (Test-Path $requiredPath)) {
+    throw "$Name source extraction completed, but required file was not found: $requiredPath"
+  }
+}
+
+function Ensure-LibvpxStaticLibrary {
+  param(
+    [string]$BuildRoot,
+    [string]$SdkDirectory,
+    [string]$MsysBashExe,
+    [string]$VcpkgInstalledRoot,
+    [string]$BindgenTarget,
+    [string]$SysrootIncludeDir
+  )
+
+  $triplet = "arm64-linux"
+  $installRoot = Join-Path $VcpkgInstalledRoot $triplet
+  $includeDir = Join-Path $installRoot "include"
+  $libDir = Join-Path $installRoot "lib"
+  $header = Join-Path $includeDir "vpx\vpx_decoder.h"
+  $finalLib = Join-Path $libDir "libvpx.a"
+  if ((Test-Path $header) -and (Test-Path $finalLib)) {
+    Write-Log "libvpx already available at: $finalLib"
+    return
+  }
+
+  $version = "1.15.2"
+  $sourceDirectory = Join-Path $BuildRoot "external-src\libvpx-$version"
+  $archivePath = Join-Path $BuildRoot "downloads\libvpx-$version.tar.gz"
+  Ensure-ArchiveSource `
+    -Name "libvpx $version" `
+    -Url "https://github.com/webmproject/libvpx/archive/refs/tags/v$version.tar.gz" `
+    -ArchivePath $archivePath `
+    -SourceDirectory $sourceDirectory `
+    -RequiredRelativePath "configure" `
+    -BuildRoot $BuildRoot
+
+  $jobs = Get-BuildJobCount
+  New-Item -ItemType Directory -Path $includeDir, $libDir -Force | Out-Null
+
+  $sdkLlvmBin = Join-Path $SdkDirectory "native\llvm\bin"
+  $sdkLlvmBinMsys = Convert-ToMsysPath $sdkLlvmBin
+  $sdkSysrootMsys = Convert-ToMsysPath (Join-Path $SdkDirectory "native\sysroot")
+  $archIncludeMsys = "$sdkSysrootMsys/usr/include/$SysrootIncludeDir"
+  $usrIncludeMsys = "$sdkSysrootMsys/usr/include"
+  $sourceMsys = Convert-ToMsysPath $sourceDirectory
+  $installMsys = Convert-ToMsysPath $installRoot
+  $workRoot = Join-Path $BuildRoot "external-src\libvpx-$version-build"
+  New-Item -ItemType Directory -Path $workRoot -Force | Out-Null
+  $bashScriptPath = Join-Path $workRoot "build-libvpx-ohos.sh"
+$bashScriptContent = @"
+set -euo pipefail
+export PATH="/usr/bin:${sdkLlvmBinMsys}:`$PATH"
+cd "$sourceMsys"
+rm -rf build-ohos
+mkdir -p build-ohos
+cd build-ohos
+export CC="$sdkLlvmBinMsys/clang.exe"
+export CXX="$sdkLlvmBinMsys/clang++.exe"
+export AS="$sdkLlvmBinMsys/clang.exe"
+export LD="$sdkLlvmBinMsys/ld.lld.exe"
+export AR="$sdkLlvmBinMsys/llvm-ar.exe"
+export RANLIB="$sdkLlvmBinMsys/llvm-ranlib.exe"
+export NM="$sdkLlvmBinMsys/llvm-nm.exe"
+export STRIP=":"
+export CFLAGS="--target=$BindgenTarget --sysroot=$sdkSysrootMsys -I$archIncludeMsys -I$usrIncludeMsys -D__MUSL__ -fPIC -O2"
+export CXXFLAGS="--target=$BindgenTarget --sysroot=$sdkSysrootMsys -I$archIncludeMsys -I$usrIncludeMsys -D__MUSL__ -fPIC -O2"
+export LDFLAGS="--target=$BindgenTarget --sysroot=$sdkSysrootMsys"
+../configure --target=arm64-linux-gcc --prefix="$installMsys" --libdir="$installMsys/lib" --enable-static --disable-shared --disable-examples --disable-tools --disable-docs --disable-unit-tests --disable-install-bins --disable-install-srcs --disable-dependency-tracking --disable-runtime-cpu-detect --enable-vp8 --enable-vp9 --enable-vp9-highbitdepth
+make -j$jobs
+make install
+"@
+  Set-Content -Path $bashScriptPath -Value $bashScriptContent -Encoding ascii
+
+  Write-Log "Building libvpx $version for OHOS..."
+  Write-Log "  Source Dir: $sourceDirectory"
+  Write-Log "  Install Root: $installRoot"
+  $libvpxLogFile = Join-Path $workRoot "libvpx-build.log"
+  & cmd.exe /d /c "`"$MsysBashExe`" `"$bashScriptPath`" > `"$libvpxLogFile`" 2>&1"
+  $libvpxExitCode = $LASTEXITCODE
+
+  if (Test-Path $libvpxLogFile) {
+    Get-Content $libvpxLogFile | ForEach-Object {
+      Write-Log $_
+    }
+  }
+
+  if ($libvpxExitCode -ne 0) {
+    throw "Failed to build libvpx for OHOS (exit code: $libvpxExitCode)."
+  }
+
+  if (-not ((Test-Path $header) -and (Test-Path $finalLib))) {
+    throw "libvpx build completed, but required files were not produced: $header / $finalLib"
+  }
+
+  Write-Log "libvpx built successfully at: $finalLib"
+}
+
+function Ensure-LibyuvStaticLibrary {
+  param(
+    [string]$BuildRoot,
+    [string]$SdkDirectory,
+    [string]$VcpkgInstalledRoot,
+    [string]$BindgenTarget
+  )
+
+  $triplet = "arm64-linux"
+  $installRoot = Join-Path $VcpkgInstalledRoot $triplet
+  $includeDir = Join-Path $installRoot "include"
+  $libDir = Join-Path $installRoot "lib"
+  $header = Join-Path $includeDir "libyuv\convert_argb.h"
+  $finalLib = Join-Path $libDir "libyuv.a"
+  if ((Test-Path $header) -and (Test-Path $finalLib)) {
+    Write-Log "libyuv already available at: $finalLib"
+    return
+  }
+
+  $revision = "0faf8dd0e004520a61a603a4d2996d5ecc80dc3f"
+  $sourceDirectory = Join-Path $BuildRoot "external-src\libyuv-$revision"
+  $archivePath = Join-Path $BuildRoot "downloads\libyuv-$revision.tar.gz"
+  Ensure-ArchiveSource `
+    -Name "libyuv $revision" `
+    -Url "https://github.com/lemenkov/libyuv/archive/$revision.tar.gz" `
+    -ArchivePath $archivePath `
+    -SourceDirectory $sourceDirectory `
+    -RequiredRelativePath "CMakeLists.txt" `
+    -BuildRoot $BuildRoot
+
+  $cmakeExe = (Get-Command cmake -ErrorAction SilentlyContinue).Source
+  $ninjaExe = (Get-Command ninja -ErrorAction SilentlyContinue).Source
+  if (-not $cmakeExe) {
+    throw "cmake.exe was not found. Install CMake before building libyuv."
+  }
+  if (-not $ninjaExe) {
+    throw "ninja.exe was not found. Install Ninja before building libyuv."
+  }
+
+  $jobs = Get-BuildJobCount
+  $buildDir = Join-Path $BuildRoot "external-src\libyuv-$revision-build"
+  Remove-DirectoryInsideRoot -Path $buildDir -RootPath $BuildRoot -Description "libyuv build directory"
+  New-Item -ItemType Directory -Path $buildDir, $includeDir, $libDir -Force | Out-Null
+
+  $sdkLlvmBin = Join-Path $SdkDirectory "native\llvm\bin"
+  $sdkSysroot = Join-Path $SdkDirectory "native\sysroot"
+  $clang = Convert-ToForwardSlashPath (Join-Path $sdkLlvmBin "clang.exe")
+  $clangxx = Convert-ToForwardSlashPath (Join-Path $sdkLlvmBin "clang++.exe")
+  $llvmAr = Convert-ToForwardSlashPath (Join-Path $sdkLlvmBin "llvm-ar.exe")
+  $llvmRanlib = Convert-ToForwardSlashPath (Join-Path $sdkLlvmBin "llvm-ranlib.exe")
+  $sdkSysrootForward = Convert-ToForwardSlashPath $sdkSysroot
+  $installRootForward = Convert-ToForwardSlashPath $installRoot
+  $cFlags = "--target=$BindgenTarget --sysroot=$sdkSysrootForward -D__MUSL__ -fPIC -O2"
+
+  Write-Log "Building libyuv $revision for OHOS..."
+  Write-Log "  Source Dir: $sourceDirectory"
+  Write-Log "  Build Dir: $buildDir"
+  Write-Log "  Install Root: $installRoot"
+  & $cmakeExe `
+    -S $sourceDirectory `
+    -B $buildDir `
+    -G Ninja `
+    "-DCMAKE_MAKE_PROGRAM=$ninjaExe" `
+    "-DCMAKE_SYSTEM_NAME=Linux" `
+    "-DCMAKE_SYSTEM_PROCESSOR=aarch64" `
+    "-DCMAKE_TRY_COMPILE_TARGET_TYPE=STATIC_LIBRARY" `
+    "-DCMAKE_BUILD_TYPE=Release" `
+    "-DCMAKE_C_COMPILER=$clang" `
+    "-DCMAKE_CXX_COMPILER=$clangxx" `
+    "-DCMAKE_AR=$llvmAr" `
+    "-DCMAKE_RANLIB=$llvmRanlib" `
+    "-DCMAKE_C_FLAGS=$cFlags" `
+    "-DCMAKE_CXX_FLAGS=$cFlags" `
+    "-DCMAKE_EXE_LINKER_FLAGS=--target=$BindgenTarget --sysroot=$sdkSysrootForward" `
+    "-DCMAKE_POSITION_INDEPENDENT_CODE=ON" `
+    "-DCMAKE_DISABLE_FIND_PACKAGE_JPEG=ON" `
+    "-DTEST=OFF" `
+    "-DCMAKE_INSTALL_PREFIX=$installRootForward"
+  if ($LASTEXITCODE -ne 0) {
+    throw "Failed to configure libyuv for OHOS."
+  }
+
+  & $cmakeExe --build $buildDir --config Release --target yuv --parallel $jobs
+  if ($LASTEXITCODE -ne 0) {
+    throw "Failed to build libyuv for OHOS."
+  }
+
+  $builtLib = Join-Path $buildDir "libyuv.a"
+  if (-not (Test-Path $builtLib)) {
+    throw "libyuv build completed, but $builtLib was not produced."
+  }
+
+  Copy-Item -LiteralPath $builtLib -Destination $finalLib -Force
+  $sourceInclude = Join-Path $sourceDirectory "include\libyuv"
+  $destInclude = Join-Path $includeDir "libyuv"
+  New-Item -ItemType Directory -Path $destInclude -Force | Out-Null
+  Copy-Item -Path (Join-Path $sourceInclude "*") -Destination $destInclude -Recurse -Force
+
+  if (-not ((Test-Path $header) -and (Test-Path $finalLib))) {
+    throw "libyuv build completed, but required files were not produced: $header / $finalLib"
+  }
+
+  Write-Log "libyuv built successfully at: $finalLib"
+}
+
+function Ensure-VideoCodecStaticLibraries {
+  param(
+    [string]$BuildRoot,
+    [string]$SdkDirectory,
+    [string]$MsysBashExe,
+    [string]$VcpkgInstalledRoot,
+    [string]$BindgenTarget,
+    [string]$SysrootIncludeDir
+  )
+
+  Ensure-LibvpxStaticLibrary `
+    -BuildRoot $BuildRoot `
+    -SdkDirectory $SdkDirectory `
+    -MsysBashExe $MsysBashExe `
+    -VcpkgInstalledRoot $VcpkgInstalledRoot `
+    -BindgenTarget $BindgenTarget `
+    -SysrootIncludeDir $SysrootIncludeDir
+
+  Ensure-LibyuvStaticLibrary `
+    -BuildRoot $BuildRoot `
+    -SdkDirectory $SdkDirectory `
+    -VcpkgInstalledRoot $VcpkgInstalledRoot `
+    -BindgenTarget $BindgenTarget
+}
+
 function Ensure-LibsodiumStaticLibrary {
   param(
     [string]$TargetTriple,
@@ -324,11 +626,7 @@ function Ensure-LibsodiumStaticLibrary {
   New-Item -ItemType Directory -Path $sourceRoot, $installDir -Force | Out-Null
   Copy-Item -Path (Join-Path $crateDirectory "libsodium") -Destination $sourceDirectory -Recurse -Force
 
-  $jobs = 4
-  $parsedJobs = 0
-  if ([int]::TryParse($env:NUMBER_OF_PROCESSORS, [ref]$parsedJobs) -and $parsedJobs -gt 0) {
-    $jobs = $parsedJobs
-  }
+  $jobs = Get-BuildJobCount
 
   $linkerMsys = Convert-ToMsysPath (Join-Path $PSScriptRoot "$TargetTriple-clang.cmd")
   $sdkLlvmBin = Join-Path $SdkDirectory "native\llvm\bin"
@@ -486,6 +784,14 @@ $libsodiumLibDir = Ensure-LibsodiumStaticLibrary `
   -SysrootIncludeDir $sysrootIncludeDir `
   -ConfigureHost $configureHost
 
+Ensure-VideoCodecStaticLibraries `
+  -BuildRoot $buildRoot `
+  -SdkDirectory $hostSdkDir `
+  -MsysBashExe $msysBashExe `
+  -VcpkgInstalledRoot $vcpkgInstalledRoot `
+  -BindgenTarget $bindgenTarget `
+  -SysrootIncludeDir $sysrootIncludeDir
+
 New-Item -ItemType Directory -Path $cargoTargetDir -Force | Out-Null
 
 $staleRoots = @(
@@ -522,6 +828,7 @@ $bindgenArchIncludeForward = "$sdkSysrootForward/usr/include/$sysrootIncludeDir"
 $bindgenUsrIncludeForward = "$sdkSysrootForward/usr/include"
 $bindgenClangArgs = "--target=$bindgenTarget --sysroot=$sdkSysrootForward -isystem $bindgenArchIncludeForward -isystem $bindgenUsrIncludeForward -D__MUSL__"
 $targetCompileFlags = "--target=$bindgenTarget --sysroot=$sdkSysrootForward -D__MUSL__ -fPIC"
+$libclangPathForward = Convert-ToForwardSlashPath $sdkLlvmBin
 
 $cmdLines = @(
   "@echo off",
@@ -531,6 +838,7 @@ $cmdLines = @(
   "set `"OHOS_SDK_HOME=$hostSdkDir`"",
   "call `"$ohosEnvScript`" || exit /b 1",
   "set `"PATH=%LLVM_BIN%;$env:USERPROFILE\.cargo\bin;%PATH%;$msysBinDir`"",
+  "set `"LIBCLANG_PATH=$libclangPathForward`"",
   $(if ($env:RUST_TOOLCHAIN_VERSION) { "set `"RUSTUP_TOOLCHAIN=$($env:RUST_TOOLCHAIN_VERSION)`"" } else { "set `"RUSTUP_TOOLCHAIN=stable`"" }),
   "set `"CARGO_TARGET_DIR=$cargoTargetDir`"",
   "set `"VCPKG_ROOT=$vcpkgRoot`"",
