@@ -306,7 +306,8 @@ function Resolve-MsysTool {
 function Resolve-OhosLibcxxIncludeDirectory {
   param(
     [string]$SdkDirectory,
-    [string]$MsysBashExe
+    [string]$MsysBashExe,
+    [switch]$Required
   )
 
   $sdkLlvmRoot = Join-Path $SdkDirectory "native\llvm"
@@ -326,17 +327,6 @@ function Resolve-OhosLibcxxIncludeDirectory {
     }
   }
 
-  foreach ($msysPath in @(
-    "/clang64/include/c++/v1",
-    "/mingw64/include/c++/v1",
-    "/ucrt64/include/c++/v1"
-  )) {
-    $candidate = Convert-MsysPathToWindowsPath -MsysBashExe $MsysBashExe -MsysPath $msysPath
-    if (-not [string]::IsNullOrWhiteSpace($candidate)) {
-      $candidateList.Add($candidate)
-    }
-  }
-
   $candidates = $candidateList | Select-Object -Unique
 
   foreach ($candidate in $candidates) {
@@ -345,16 +335,8 @@ function Resolve-OhosLibcxxIncludeDirectory {
     }
   }
 
-  $msysRoots = @(
-    (Convert-MsysPathToWindowsPath -MsysBashExe $MsysBashExe -MsysPath "/clang64"),
-    (Convert-MsysPathToWindowsPath -MsysBashExe $MsysBashExe -MsysPath "/mingw64"),
-    (Convert-MsysPathToWindowsPath -MsysBashExe $MsysBashExe -MsysPath "/ucrt64")
-  )
   $searchRoots = @(
     $sdkLlvmRoot,
-    "C:\msys64\clang64",
-    "C:\msys64\mingw64",
-    $msysRoots,
     "C:\Program Files\LLVM",
     "C:\Program Files (x86)\LLVM"
   ) | Where-Object {
@@ -375,7 +357,12 @@ function Resolve-OhosLibcxxIncludeDirectory {
   $checked = $candidates | ForEach-Object {
     "$_ (cstdint exists: $(Test-Path (Join-Path $_ 'cstdint')))"
   }
-  throw "OpenHarmony SDK libc++ include directory was not found. Checked: $($checked -join '; ')"
+  if ($Required) {
+    throw "OpenHarmony SDK libc++ include directory was not found. Checked: $($checked -join '; ')"
+  }
+
+  Write-Log "  libc++ Include: not found. Checked: $($checked -join '; ')"
+  return $null
 }
 
 function Resolve-LibsodiumCrateDirectory {
@@ -512,9 +499,16 @@ function Ensure-LibvpxStaticLibrary {
   $installRoot = Join-Path $VcpkgInstalledRoot $triplet
   $includeDir = Join-Path $installRoot "include"
   $libDir = Join-Path $installRoot "lib"
-  $header = Join-Path $includeDir "vpx\vpx_decoder.h"
+  $requiredHeaders = @(
+    "vpx\vpx_decoder.h",
+    "vpx\vp8cx.h",
+    "vpx\vpx_encoder.h"
+  ) | ForEach-Object {
+    Join-Path $includeDir $_
+  }
   $finalLib = Join-Path $libDir "libvpx.a"
-  if ((Test-Path $header) -and (Test-Path $finalLib)) {
+  $missingHeaders = $requiredHeaders | Where-Object { -not (Test-Path $_) }
+  if (($missingHeaders.Count -eq 0) -and (Test-Path $finalLib)) {
     Write-Log "libvpx already available at: $finalLib"
     return
   }
@@ -539,8 +533,12 @@ function Ensure-LibvpxStaticLibrary {
   $archIncludeMsys = "$sdkSysrootMsys/usr/include/$SysrootIncludeDir"
   $usrIncludeMsys = "$sdkSysrootMsys/usr/include"
   $libcxxIncludeDir = Resolve-OhosLibcxxIncludeDirectory -SdkDirectory $SdkDirectory -MsysBashExe $MsysBashExe
-  $libcxxIncludeMsys = Convert-ToMsysPath $libcxxIncludeDir
-  $ohosCxxStdFlags = "-nostdinc++ -isystem $libcxxIncludeMsys"
+  if ($libcxxIncludeDir) {
+    $libcxxIncludeMsys = Convert-ToMsysPath $libcxxIncludeDir
+    $ohosCxxStdFlags = "-nostdinc++ -isystem $libcxxIncludeMsys"
+  } else {
+    $ohosCxxStdFlags = ""
+  }
   $sourceMsys = Convert-ToMsysPath $sourceDirectory
   $installMsys = Convert-ToMsysPath $installRoot
   $workRoot = Join-Path $BuildRoot "external-src\libvpx-$version-build"
@@ -566,15 +564,35 @@ export CFLAGS="--target=$BindgenTarget --sysroot=$sdkSysrootMsys -I$archIncludeM
 export CXXFLAGS="--target=$BindgenTarget --sysroot=$sdkSysrootMsys -I$archIncludeMsys -I$usrIncludeMsys `$VPX_OHOS_CXXFLAGS -D__MUSL__ -fPIC -O2"
 export LDFLAGS="--target=$BindgenTarget --sysroot=$sdkSysrootMsys"
 ../configure --target=arm64-linux-gcc --prefix="$installMsys" --libdir="$installMsys/lib" --extra-cxxflags="`$VPX_OHOS_CXXFLAGS" --enable-static --disable-shared --disable-examples --disable-tools --disable-docs --disable-unit-tests --disable-install-bins --disable-install-srcs --disable-dependency-tracking --disable-runtime-cpu-detect --enable-vp8 --enable-vp9 --enable-vp9-highbitdepth
-make -j$jobs
-make install
+make -j$jobs libvpx.a
+mkdir -p "$installMsys/include/vpx" "$installMsys/lib/pkgconfig"
+cp -f libvpx.a "$installMsys/lib/libvpx.a"
+for header in vp8.h vp8cx.h vp8dx.h vpx_codec.h vpx_decoder.h vpx_encoder.h vpx_ext_ratectrl.h vpx_frame_buffer.h vpx_image.h vpx_integer.h vpx_tpl.h; do
+  cp -f "../vpx/`$header" "$installMsys/include/vpx/`$header"
+done
+cat > "$installMsys/lib/pkgconfig/vpx.pc" <<'PC'
+# pkg-config file from libvpx v$version
+prefix=$installMsys
+exec_prefix=`${prefix}
+libdir=`${prefix}/lib
+includedir=`${prefix}/include
+
+Name: vpx
+Description: WebM Project VPx codec implementation
+Version: $version
+Requires:
+Conflicts:
+Libs: -L`${libdir} -lvpx -lm
+Libs.private: -lm -lpthread
+Cflags: -I`${includedir}
+PC
 "@
   Set-Content -Path $bashScriptPath -Value $bashScriptContent -Encoding ascii
 
   Write-Log "Building libvpx $version for OHOS..."
   Write-Log "  Source Dir: $sourceDirectory"
   Write-Log "  Install Root: $installRoot"
-  Write-Log "  libc++ Include: $libcxxIncludeDir"
+  Write-Log "  libc++ Include: $(if ($libcxxIncludeDir) { $libcxxIncludeDir } else { 'not used; only libvpx.a target is built' })"
   Write-Log "  libvpx extra CXXFLAGS: $ohosCxxStdFlags"
   $libvpxLogFile = Join-Path $workRoot "libvpx-build.log"
   & cmd.exe /d /c "`"$MsysBashExe`" `"$bashScriptPath`" > `"$libvpxLogFile`" 2>&1"
@@ -590,8 +608,9 @@ make install
     throw "Failed to build libvpx for OHOS (exit code: $libvpxExitCode)."
   }
 
-  if (-not ((Test-Path $header) -and (Test-Path $finalLib))) {
-    throw "libvpx build completed, but required files were not produced: $header / $finalLib"
+  $missingHeaders = $requiredHeaders | Where-Object { -not (Test-Path $_) }
+  if (($missingHeaders.Count -gt 0) -or (-not (Test-Path $finalLib))) {
+    throw "libvpx build completed, but required files were not produced: $($missingHeaders -join ', ') / $finalLib"
   }
 
   Write-Log "libvpx built successfully at: $finalLib"
@@ -652,14 +671,18 @@ function Ensure-LibyuvStaticLibrary {
   $installRootForward = Convert-ToForwardSlashPath $installRoot
   $cFlags = "--target=$BindgenTarget --sysroot=$sdkSysrootForward -D__MUSL__ -fPIC -O2"
   $libcxxIncludeDir = Resolve-OhosLibcxxIncludeDirectory -SdkDirectory $SdkDirectory -MsysBashExe $MsysBashExe
-  $libcxxIncludeForward = Convert-ToForwardSlashPath $libcxxIncludeDir
-  $cxxFlags = "$cFlags -nostdinc++ -isystem $libcxxIncludeForward"
+  if ($libcxxIncludeDir) {
+    $libcxxIncludeForward = Convert-ToForwardSlashPath $libcxxIncludeDir
+    $cxxFlags = "$cFlags -nostdinc++ -isystem $libcxxIncludeForward"
+  } else {
+    $cxxFlags = $cFlags
+  }
 
   Write-Log "Building libyuv $revision for OHOS..."
   Write-Log "  Source Dir: $sourceDirectory"
   Write-Log "  Build Dir: $buildDir"
   Write-Log "  Install Root: $installRoot"
-  Write-Log "  libc++ Include: $libcxxIncludeDir"
+  Write-Log "  libc++ Include: $(if ($libcxxIncludeDir) { $libcxxIncludeDir } else { 'not used' })"
   & $cmakeExe `
     -S $sourceDirectory `
     -B $buildDir `

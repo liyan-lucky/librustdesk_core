@@ -1225,7 +1225,7 @@ HarmonyOS 版使用 **staticlib + CMake + NAPI** 架构：
 - `codec_ohos.rs` 使用 `VpxDecoder` 解码 VP8/VP9，并通过 `GoogleImage::to()` 转成 RGBA。
 - `scripts/build_native_bridge.ps1` 在冷启动环境自动准备 `libsodium`、`libvpx 1.15.2`、`libyuv 0faf8dd0e004520a61a603a4d2996d5ecc80dc3f`。
 - `LIBCLANG_PATH` 明确设置到 OpenHarmony SDK LLVM `bin`，保证 bindgen 在线上 runner 可找到 `libclang.dll`。
-- Online run `27451105187` showed that libvpx C++ files can fail on GitHub Actions with `<cstdint>` not found. The build script now passes a controlled OpenHarmony SDK libc++ include path to libvpx/libyuv C++ compilation through `-nostdinc++ -isystem ...`.
+- Online run `27451105187` showed that libvpx C++ files can fail on GitHub Actions with `<cstdint>` not found. The build script now avoids the unused libvpx RTC C++ target by building only `libvpx.a` and manually installing the public headers. `libyuv` still uses the OpenHarmony SDK libc++ include path when it exists.
 
 ### 验证
 
@@ -1236,16 +1236,17 @@ HarmonyOS 版使用 **staticlib + CMake + NAPI** 架构：
 - Follow-up validation after the CXXFLAGS fix: a clean VPX/YUV installed root produced `libvpx.a` (`3,302,168` bytes) and `libyuv.a` (`683,472` bytes), and the standard cached full build passed with local core size `128,881,292` bytes, SHA256 `38CBFA11379C53622AEDDB9DE5D14087723986F3555A62E8FADEF9C38D18FD32`.
 - Online run `27452113153` proved that relying on environment `CXXFLAGS` alone was not enough. The script now validates the selected libc++ include directory by requiring `cstdint`, logs the selected directory, and passes the same C++ standard include flags to libvpx configure with `--extra-cxxflags`.
 - Final local cold validation after the `--extra-cxxflags` and MSYS path fix produced `libvpx.a` (`3,302,304` bytes), `libyuv.a` (`683,472` bytes), and a full local core of `129,593,638` bytes, SHA256 `2322E55089629C7CB9FFD426481220BDD43AB3C3DA46F37D85AD0A85DD5ADDFB`.
-- Online run `27457899059` showed the GitHub SDK zip can omit SDK libc++ headers entirely. The workflow installs MSYS2 `mingw-w64-clang-x86_64-libc++`, and the script can fall back to `RUSTDESK_HARMONY_LIBCXX_INCLUDE`, `OHOS_LIBCXX_INCLUDE`, or the action-managed MSYS2 libc++ include root while keeping OHOS sysroot for C/system headers.
-- Online run `27458205351` showed `mingw-w64-clang-x86_64-libc++` was installed, but the script was still reading the wrong MSYS2 root (`C:\msys64`). The build now probes `msys2.cmd` first, resolves `/usr/bin/bash.exe` with `cygpath`, and uses that same bash instance to discover `/clang64/include/c++/v1`.
+- Online run `27457899059` showed the GitHub SDK zip can omit SDK libc++ headers entirely. A temporary MSYS2 libc++ fallback was attempted, but it is not kept.
+- Online run `27458205351` showed `mingw-w64-clang-x86_64-libc++` was installed, but the script was still reading the wrong MSYS2 root (`C:\msys64`). Run `27458902852` then showed the correct MSYS2 libc++ root is still incompatible with the OHOS SDK clang, so the workflow no longer installs or exports MSYS2 libc++ headers.
 - Do not disable libvpx VP8/VP9 encoders in this project yet. A local decoder-only validation built `libvpx.a` but failed Cargo because `scrap/src/bindings/vpx_ffi.h` needs `vpx/vp8cx.h` and `vpx/vpx_encoder.h`, and `common/vpxcodec.rs` references encoder APIs.
 - Final local validation after restoring full encoder support passed in `C:\rustdesk_harmony_decoder_validate`: `libvpx.a` (`3,302,224` bytes), Cargo exit code `0`, core size `129,592,014` bytes, SHA256 `32F3B3AC37EC82C94F2B4B3BA041459D2AF8ADA6AB1F3A57B39056F460F61B5F`.
+- Current local validation after switching to `make libvpx.a` passed with `build_debug_20260613_074001.log`: `libvpx-build.log` had no `[CXX]`, no `ratectrl_rtc`, and no `libvpxrc`; `libvpx.a` remained `3,302,224` bytes; Cargo exit code `0`; core size `129,592,014` bytes, SHA256 `32F3B3AC37EC82C94F2B4B3BA041459D2AF8ADA6AB1F3A57B39056F460F61B5F`.
 
 ### 经验
 
 - 看到 `session-connected` + `quality-status codec_format=VP9` 但没有 `video-frame` 时，先检查 `codec_ohos.rs` 是否真的解码，不能只追 `harmony_next_rgba()`。
 - 只要 `scrap` 开始在 OHOS 编译 VPX/YUV 路径，`EncoderCfg`、`base_bitrate()`、`codec_thread_num()` 这些旧 stub 也必须和共享模块签名保持一致。
-- When adding OHOS C++ static dependencies on Windows runners, do not assume `--sysroot` is enough for libc++ headers. Use one SDK libc++ include path with `-nostdinc++`; adding both `include/c++/v1` and `include/libcxx-ohos/include/c++/v1` as normal `-isystem` paths can break libc++ `include_next` and produce unresolved `size_t`.
+- When adding OHOS C++ static dependencies on Windows runners, do not assume `--sysroot` is enough for libc++ headers. If a C++ target is required, use one compatible SDK libc++ include path with `-nostdinc++`; adding both `include/c++/v1` and `include/libcxx-ohos/include/c++/v1` as normal `-isystem` paths can break libc++ `include_next` and produce unresolved `size_t`.
 - When a Windows binary such as SDK `clang++.exe` is launched from MSYS bash, do not glue an MSYS path to an option (`-isystem/msys/path`). Use `-isystem /msys/path` so MSYS path conversion can hand clang a Windows path.
-- If the online SDK zip is a minimal `native/llvm + native/sysroot` package, do not assume SDK libc++ headers are present. Either set `RUSTDESK_HARMONY_LIBCXX_INCLUDE` or install MSYS2 clang64 libc++ headers and let the script discover the actual setup-msys2 root through `msys2.cmd`/`cygpath`.
+- If the online SDK zip is a minimal `native/llvm + native/sysroot` package, do not assume SDK libc++ headers are present and do not use MSYS2 libc++ as a fallback for OHOS clang. Prefer avoiding unused C++ targets, as done for libvpx `libvpxrc.a`; only use `RUSTDESK_HARMONY_LIBCXX_INCLUDE` when it points to headers known to match the SDK clang.
 - For full local rebuilds, keep `VCPKG_ROOT` and `VCPKG_INSTALLED_ROOT` aligned. Setting only a custom `VCPKG_INSTALLED_ROOT` can let `scrap` find VPX/YUV while `magnum-opus` still looks under `VCPKG_ROOT\installed` and fails on `opus/opus_multistream.h`.
