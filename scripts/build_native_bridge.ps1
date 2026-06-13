@@ -254,9 +254,17 @@ function Resolve-OhosLibcxxIncludeDirectory {
 
   $sdkLlvmRoot = Join-Path $SdkDirectory "native\llvm"
   $candidates = @(
+    $env:RUSTDESK_HARMONY_LIBCXX_INCLUDE,
+    $env:OHOS_LIBCXX_INCLUDE,
     (Join-Path $sdkLlvmRoot "include\libcxx-ohos\include\c++\v1"),
-    (Join-Path $sdkLlvmRoot "include\c++\v1")
-  )
+    (Join-Path $sdkLlvmRoot "include\c++\v1"),
+    "C:\msys64\clang64\include\c++\v1",
+    "C:\msys64\mingw64\include\c++\v1",
+    "C:\Program Files\LLVM\include\c++\v1",
+    "C:\Program Files (x86)\LLVM\include\c++\v1"
+  ) | Where-Object {
+    -not [string]::IsNullOrWhiteSpace($_)
+  }
 
   foreach ($candidate in $candidates) {
     if (Test-Path (Join-Path $candidate "cstdint")) {
@@ -264,13 +272,25 @@ function Resolve-OhosLibcxxIncludeDirectory {
     }
   }
 
-  $discovered = Get-ChildItem -Path $sdkLlvmRoot -Recurse -Filter "cstdint" -File -ErrorAction SilentlyContinue |
-    Where-Object {
-      ($_.FullName -replace '\\', '/') -match '/include/.*/c\+\+/v1/cstdint$'
-    } |
-    Select-Object -First 1
-  if ($discovered) {
-    return [System.IO.Path]::GetFullPath($discovered.DirectoryName)
+  $searchRoots = @(
+    $sdkLlvmRoot,
+    "C:\msys64\clang64",
+    "C:\msys64\mingw64",
+    "C:\Program Files\LLVM",
+    "C:\Program Files (x86)\LLVM"
+  ) | Where-Object {
+    -not [string]::IsNullOrWhiteSpace($_) -and (Test-Path $_)
+  }
+
+  foreach ($searchRoot in $searchRoots) {
+    $discovered = Get-ChildItem -Path $searchRoot -Recurse -Filter "cstdint" -File -ErrorAction SilentlyContinue |
+      Where-Object {
+        ($_.FullName -replace '\\', '/') -match '/include/.*/c\+\+/v1/cstdint$'
+      } |
+      Select-Object -First 1
+    if ($discovered) {
+      return [System.IO.Path]::GetFullPath($discovered.DirectoryName)
+    }
   }
 
   $checked = $candidates | ForEach-Object {

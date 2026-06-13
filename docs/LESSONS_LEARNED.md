@@ -15,12 +15,14 @@
 - The OHOS sysroot does not make libc++ headers visible to clang++ by itself.
 - `libvpx` must receive the SDK libc++ include directory in the generated C++ build flags, not only through loosely assumed environment state.
 - When Windows `clang++.exe` is invoked from MSYS, a glued argument such as `-isystem/msys/path` is not path-converted. Use `-isystem /msys/path` as two arguments, or a native/forward-slash Windows path.
+- The online SDK zip can be a minimal package that has `native/llvm` and `native/sysroot` but no SDK libc++ headers. In that case, use a controlled fallback such as MSYS2 clang64 libc++ headers.
 
 ### Fix
 
 - Resolve the SDK libc++ include directory by checking for `cstdint`.
 - Log the selected libc++ include path in `build_debug_*.log`.
 - Pass `-nostdinc++ -isystem <msys-path>` to libvpx through both `CXXFLAGS` and `--extra-cxxflags`.
+- Install `mingw-w64-clang-x86_64-libc++` in GitHub Actions and allow fallback to `C:\msys64\clang64\include\c++\v1` when SDK libc++ headers are absent.
 - Keep only one libc++ include root. Do not add both `include/c++/v1` and `include/libcxx-ohos/include/c++/v1`.
 
 ### Validation

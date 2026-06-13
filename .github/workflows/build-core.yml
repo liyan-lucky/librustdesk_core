@@ -48,6 +48,7 @@ jobs:
             automake
             libtool
             pkgconf
+            mingw-w64-clang-x86_64-libc++
 
       - name: Prepare build directories
         shell: pwsh
@@ -99,6 +100,7 @@ jobs:
 
           Write-Host "SDK root: $sdkNativeRoot"
           Write-Host "Native dir: $nativeDir"
+          Write-Host "MSYS2 clang64 libc++ cstdint exists: $(Test-Path 'C:\msys64\clang64\include\c++\v1\cstdint')"
           Get-ChildItem "$nativeDir" | Select-Object Name
 
       - name: Cache Cargo
