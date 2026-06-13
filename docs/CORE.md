@@ -1234,10 +1234,13 @@ HarmonyOS 版使用 **staticlib + CMake + NAPI** 架构：
 - 本地产物 Size: `128,881,550` bytes；SHA256: `777B75B02384093618AE0E8BA880192439B9950D94C29DDE1F6ED783F9B47AEA`。
 - After the first push, GitHub Actions run `27451105187` failed in the cold libvpx step before Cargo. The local script was updated and must be repushed before downloading the next core release.
 - Follow-up validation after the CXXFLAGS fix: a clean VPX/YUV installed root produced `libvpx.a` (`3,302,168` bytes) and `libyuv.a` (`683,472` bytes), and the standard cached full build passed with local core size `128,881,292` bytes, SHA256 `38CBFA11379C53622AEDDB9DE5D14087723986F3555A62E8FADEF9C38D18FD32`.
+- Online run `27452113153` proved that relying on environment `CXXFLAGS` alone was not enough. The script now validates the selected libc++ include directory by requiring `cstdint`, logs the selected directory, and passes the same C++ standard include flags to libvpx configure with `--extra-cxxflags`.
+- Final local cold validation after the `--extra-cxxflags` and MSYS path fix produced `libvpx.a` (`3,302,304` bytes), `libyuv.a` (`683,472` bytes), and a full local core of `129,593,638` bytes, SHA256 `2322E55089629C7CB9FFD426481220BDD43AB3C3DA46F37D85AD0A85DD5ADDFB`.
 
 ### 经验
 
 - 看到 `session-connected` + `quality-status codec_format=VP9` 但没有 `video-frame` 时，先检查 `codec_ohos.rs` 是否真的解码，不能只追 `harmony_next_rgba()`。
 - 只要 `scrap` 开始在 OHOS 编译 VPX/YUV 路径，`EncoderCfg`、`base_bitrate()`、`codec_thread_num()` 这些旧 stub 也必须和共享模块签名保持一致。
 - When adding OHOS C++ static dependencies on Windows runners, do not assume `--sysroot` is enough for libc++ headers. Use one SDK libc++ include path with `-nostdinc++`; adding both `include/c++/v1` and `include/libcxx-ohos/include/c++/v1` as normal `-isystem` paths can break libc++ `include_next` and produce unresolved `size_t`.
+- When a Windows binary such as SDK `clang++.exe` is launched from MSYS bash, do not glue an MSYS path to an option (`-isystem/msys/path`). Use `-isystem /msys/path` so MSYS path conversion can hand clang a Windows path.
 - For full local rebuilds, keep `VCPKG_ROOT` and `VCPKG_INSTALLED_ROOT` aligned. Setting only a custom `VCPKG_INSTALLED_ROOT` can let `scrap` find VPX/YUV while `magnum-opus` still looks under `VCPKG_ROOT\installed` and fails on `opus/opus_multistream.h`.

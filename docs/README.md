@@ -4,7 +4,7 @@
 
 > 2026-06-13 经验：如果手机端已 `session-connected` 且 `quality-status` 显示 `codec_format=VP9`，但没有 `video-frame`，先看 `CORE.md` 的 OHOS VP8/VP9 解码修复记录和 `CONNECTION_DEBUG_LOG.md`，不要只查 `session_next_rgba()`。
 
-> 2026-06-13 CI note: if the online Windows runner fails building libvpx with `<cstdint>` not found, check `scripts/build_native_bridge.ps1` CXX flags for `-nostdinc++` plus one OpenHarmony SDK libc++ include path before changing codec code.
+> 2026-06-13 CI note: if the online Windows runner fails building libvpx with `<cstdint>` not found, check `scripts/build_native_bridge.ps1` CXX flags for `-nostdinc++` plus one OpenHarmony SDK libc++ include path before changing codec code. For Windows `clang++.exe` launched by MSYS, use `-isystem <msys-path>` as two argv entries; `-isystem/path` is not MSYS-converted.
 
 ## 文档列表
 
