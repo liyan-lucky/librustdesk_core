@@ -715,6 +715,9 @@
 - Fix: compile OHOS `scrap` with `vpxcodec`, `vpx`, and `convert`; generate/link `libvpx` and `libyuv`; decode VP8/VP9 packets through `VpxDecoder`; convert the last decoded frame through `GoogleImage::to()` so `HarmonyHandler::on_rgba()` can publish `video-frame`.
 - Build validation passed locally with cached deps and with a cold temporary `VCPKG_INSTALLED_ROOT` that built `libvpx 1.15.2` and `libyuv 0faf8dd0e004520a61a603a4d2996d5ecc80dc3f` from source.
 - New local core size/hash before pushing: `128,881,550` bytes, SHA256 `777B75B02384093618AE0E8BA880192439B9950D94C29DDE1F6ED783F9B47AEA`.
+- Online run `27451105187` for commit `5ba02c7` failed during the cold libvpx build: `vp8_ratectrl_rtc.h` and `vp9/ratectrl_rtc.h` included `<cstdint>`, but the runner clang++ did not find SDK libc++ headers from `--sysroot` alone.
+- Follow-up fix: `scripts/build_native_bridge.ps1` now uses `-nostdinc++` with the OpenHarmony SDK libc++ include directory for libvpx and libyuv C++ flags. Prefer `native/llvm/include/libcxx-ohos/include/c++/v1`, with fallback to `native/llvm/include/c++/v1`.
+- Local follow-up validation: empty `VCPKG_INSTALLED_ROOT` rebuilt `libvpx.a` (`3,302,168` bytes) and `libyuv.a` (`683,472` bytes); standard cached build then completed successfully with local core size `128,881,292` bytes and SHA256 `38CBFA11379C53622AEDDB9DE5D14087723986F3555A62E8FADEF9C38D18FD32`.
 
 ## 2026-06-12 waiting video stream follow-up
 

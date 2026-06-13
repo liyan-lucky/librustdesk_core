@@ -1225,14 +1225,19 @@ HarmonyOS 版使用 **staticlib + CMake + NAPI** 架构：
 - `codec_ohos.rs` 使用 `VpxDecoder` 解码 VP8/VP9，并通过 `GoogleImage::to()` 转成 RGBA。
 - `scripts/build_native_bridge.ps1` 在冷启动环境自动准备 `libsodium`、`libvpx 1.15.2`、`libyuv 0faf8dd0e004520a61a603a4d2996d5ecc80dc3f`。
 - `LIBCLANG_PATH` 明确设置到 OpenHarmony SDK LLVM `bin`，保证 bindgen 在线上 runner 可找到 `libclang.dll`。
+- Online run `27451105187` showed that libvpx C++ files can fail on GitHub Actions with `<cstdint>` not found. The build script now passes a controlled OpenHarmony SDK libc++ include path to libvpx/libyuv C++ compilation through `-nostdinc++ -isystem ...`.
 
 ### 验证
 
 - `powershell -NoProfile -ExecutionPolicy Bypass -File scripts\build_native_bridge.ps1` 通过。
 - 冷启动依赖测试通过：空 `VCPKG_INSTALLED_ROOT` 下成功构建 `libvpx.a` 和 `libyuv.a`，随后 Cargo 构建退出 `0`。
 - 本地产物 Size: `128,881,550` bytes；SHA256: `777B75B02384093618AE0E8BA880192439B9950D94C29DDE1F6ED783F9B47AEA`。
+- After the first push, GitHub Actions run `27451105187` failed in the cold libvpx step before Cargo. The local script was updated and must be repushed before downloading the next core release.
+- Follow-up validation after the CXXFLAGS fix: a clean VPX/YUV installed root produced `libvpx.a` (`3,302,168` bytes) and `libyuv.a` (`683,472` bytes), and the standard cached full build passed with local core size `128,881,292` bytes, SHA256 `38CBFA11379C53622AEDDB9DE5D14087723986F3555A62E8FADEF9C38D18FD32`.
 
 ### 经验
 
 - 看到 `session-connected` + `quality-status codec_format=VP9` 但没有 `video-frame` 时，先检查 `codec_ohos.rs` 是否真的解码，不能只追 `harmony_next_rgba()`。
 - 只要 `scrap` 开始在 OHOS 编译 VPX/YUV 路径，`EncoderCfg`、`base_bitrate()`、`codec_thread_num()` 这些旧 stub 也必须和共享模块签名保持一致。
+- When adding OHOS C++ static dependencies on Windows runners, do not assume `--sysroot` is enough for libc++ headers. Use one SDK libc++ include path with `-nostdinc++`; adding both `include/c++/v1` and `include/libcxx-ohos/include/c++/v1` as normal `-isystem` paths can break libc++ `include_next` and produce unresolved `size_t`.
+- For full local rebuilds, keep `VCPKG_ROOT` and `VCPKG_INSTALLED_ROOT` aligned. Setting only a custom `VCPKG_INSTALLED_ROOT` can let `scrap` find VPX/YUV while `magnum-opus` still looks under `VCPKG_ROOT\installed` and fails on `opus/opus_multistream.h`.

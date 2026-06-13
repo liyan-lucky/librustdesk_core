@@ -405,10 +405,16 @@ function Ensure-LibvpxStaticLibrary {
   New-Item -ItemType Directory -Path $includeDir, $libDir -Force | Out-Null
 
   $sdkLlvmBin = Join-Path $SdkDirectory "native\llvm\bin"
+  $sdkLlvmRoot = Join-Path $SdkDirectory "native\llvm"
   $sdkLlvmBinMsys = Convert-ToMsysPath $sdkLlvmBin
   $sdkSysrootMsys = Convert-ToMsysPath (Join-Path $SdkDirectory "native\sysroot")
   $archIncludeMsys = "$sdkSysrootMsys/usr/include/$SysrootIncludeDir"
   $usrIncludeMsys = "$sdkSysrootMsys/usr/include"
+  $libcxxIncludeDir = Join-Path $sdkLlvmRoot "include\libcxx-ohos\include\c++\v1"
+  if (-not (Test-Path $libcxxIncludeDir)) {
+    $libcxxIncludeDir = Join-Path $sdkLlvmRoot "include\c++\v1"
+  }
+  $libcxxIncludeMsys = Convert-ToMsysPath $libcxxIncludeDir
   $sourceMsys = Convert-ToMsysPath $sourceDirectory
   $installMsys = Convert-ToMsysPath $installRoot
   $workRoot = Join-Path $BuildRoot "external-src\libvpx-$version-build"
@@ -430,7 +436,7 @@ export RANLIB="$sdkLlvmBinMsys/llvm-ranlib.exe"
 export NM="$sdkLlvmBinMsys/llvm-nm.exe"
 export STRIP=":"
 export CFLAGS="--target=$BindgenTarget --sysroot=$sdkSysrootMsys -I$archIncludeMsys -I$usrIncludeMsys -D__MUSL__ -fPIC -O2"
-export CXXFLAGS="--target=$BindgenTarget --sysroot=$sdkSysrootMsys -I$archIncludeMsys -I$usrIncludeMsys -D__MUSL__ -fPIC -O2"
+export CXXFLAGS="--target=$BindgenTarget --sysroot=$sdkSysrootMsys -I$archIncludeMsys -I$usrIncludeMsys -nostdinc++ -isystem $libcxxIncludeMsys -D__MUSL__ -fPIC -O2"
 export LDFLAGS="--target=$BindgenTarget --sysroot=$sdkSysrootMsys"
 ../configure --target=arm64-linux-gcc --prefix="$installMsys" --libdir="$installMsys/lib" --enable-static --disable-shared --disable-examples --disable-tools --disable-docs --disable-unit-tests --disable-install-bins --disable-install-srcs --disable-dependency-tracking --disable-runtime-cpu-detect --enable-vp8 --enable-vp9 --enable-vp9-highbitdepth
 make -j$jobs
@@ -507,6 +513,7 @@ function Ensure-LibyuvStaticLibrary {
   New-Item -ItemType Directory -Path $buildDir, $includeDir, $libDir -Force | Out-Null
 
   $sdkLlvmBin = Join-Path $SdkDirectory "native\llvm\bin"
+  $sdkLlvmRoot = Join-Path $SdkDirectory "native\llvm"
   $sdkSysroot = Join-Path $SdkDirectory "native\sysroot"
   $clang = Convert-ToForwardSlashPath (Join-Path $sdkLlvmBin "clang.exe")
   $clangxx = Convert-ToForwardSlashPath (Join-Path $sdkLlvmBin "clang++.exe")
@@ -515,6 +522,12 @@ function Ensure-LibyuvStaticLibrary {
   $sdkSysrootForward = Convert-ToForwardSlashPath $sdkSysroot
   $installRootForward = Convert-ToForwardSlashPath $installRoot
   $cFlags = "--target=$BindgenTarget --sysroot=$sdkSysrootForward -D__MUSL__ -fPIC -O2"
+  $libcxxIncludeDir = Join-Path $sdkLlvmRoot "include\libcxx-ohos\include\c++\v1"
+  if (-not (Test-Path $libcxxIncludeDir)) {
+    $libcxxIncludeDir = Join-Path $sdkLlvmRoot "include\c++\v1"
+  }
+  $libcxxIncludeForward = Convert-ToForwardSlashPath $libcxxIncludeDir
+  $cxxFlags = "$cFlags -nostdinc++ -isystem $libcxxIncludeForward"
 
   Write-Log "Building libyuv $revision for OHOS..."
   Write-Log "  Source Dir: $sourceDirectory"
@@ -534,7 +547,7 @@ function Ensure-LibyuvStaticLibrary {
     "-DCMAKE_AR=$llvmAr" `
     "-DCMAKE_RANLIB=$llvmRanlib" `
     "-DCMAKE_C_FLAGS=$cFlags" `
-    "-DCMAKE_CXX_FLAGS=$cFlags" `
+    "-DCMAKE_CXX_FLAGS=$cxxFlags" `
     "-DCMAKE_EXE_LINKER_FLAGS=--target=$BindgenTarget --sysroot=$sdkSysrootForward" `
     "-DCMAKE_POSITION_INDEPENDENT_CODE=ON" `
     "-DCMAKE_DISABLE_FIND_PACKAGE_JPEG=ON" `
