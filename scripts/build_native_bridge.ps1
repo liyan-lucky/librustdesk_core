@@ -233,6 +233,60 @@ function Ensure-NoSpaceSdkMirror {
   return $resolvedMirrorDirectory
 }
 
+function Resolve-MsysSetupToolPath {
+  param([string]$MsysPath)
+
+  $wrappers = New-Object System.Collections.Generic.List[string]
+  $pathWrapper = Get-Command "msys2.cmd" -ErrorAction SilentlyContinue
+  if ($pathWrapper) {
+    $wrappers.Add($pathWrapper.Source)
+  }
+  if ($env:RUNNER_TEMP) {
+    $wrappers.Add((Join-Path $env:RUNNER_TEMP "setup-msys2\msys2.cmd"))
+  }
+
+  foreach ($wrapper in ($wrappers | Where-Object { $_ -and (Test-Path $_) } | Select-Object -Unique)) {
+    try {
+      $result = & $wrapper -c "cygpath -w '$MsysPath'" 2>$null
+      if ($LASTEXITCODE -eq 0 -and $result) {
+        $resolved = ($result | Select-Object -First 1).Trim()
+        if ($resolved -and (Test-Path $resolved)) {
+          return [System.IO.Path]::GetFullPath($resolved)
+        }
+      }
+    } catch {
+      Write-Log "  MSYS2 wrapper probe failed for $MsysPath via $wrapper : $($_.Exception.Message)"
+    }
+  }
+
+  return $null
+}
+
+function Convert-MsysPathToWindowsPath {
+  param(
+    [string]$MsysBashExe,
+    [string]$MsysPath
+  )
+
+  if ([string]::IsNullOrWhiteSpace($MsysBashExe) -or -not (Test-Path $MsysBashExe)) {
+    return $null
+  }
+
+  try {
+    $result = & $MsysBashExe -lc "cygpath -w '$MsysPath'" 2>$null
+    if ($LASTEXITCODE -eq 0 -and $result) {
+      $resolved = ($result | Select-Object -First 1).Trim()
+      if ($resolved) {
+        return [System.IO.Path]::GetFullPath($resolved)
+      }
+    }
+  } catch {
+    Write-Log "  MSYS2 cygpath probe failed for $MsysPath via $MsysBashExe : $($_.Exception.Message)"
+  }
+
+  return $null
+}
+
 function Resolve-MsysTool {
   param(
     [string[]]$Candidates,
@@ -250,10 +304,14 @@ function Resolve-MsysTool {
 }
 
 function Resolve-OhosLibcxxIncludeDirectory {
-  param([string]$SdkDirectory)
+  param(
+    [string]$SdkDirectory,
+    [string]$MsysBashExe
+  )
 
   $sdkLlvmRoot = Join-Path $SdkDirectory "native\llvm"
-  $candidates = @(
+  $candidateList = New-Object System.Collections.Generic.List[string]
+  foreach ($candidate in @(
     $env:RUSTDESK_HARMONY_LIBCXX_INCLUDE,
     $env:OHOS_LIBCXX_INCLUDE,
     (Join-Path $sdkLlvmRoot "include\libcxx-ohos\include\c++\v1"),
@@ -262,9 +320,24 @@ function Resolve-OhosLibcxxIncludeDirectory {
     "C:\msys64\mingw64\include\c++\v1",
     "C:\Program Files\LLVM\include\c++\v1",
     "C:\Program Files (x86)\LLVM\include\c++\v1"
-  ) | Where-Object {
-    -not [string]::IsNullOrWhiteSpace($_)
+  )) {
+    if (-not [string]::IsNullOrWhiteSpace($candidate)) {
+      $candidateList.Add($candidate)
+    }
   }
+
+  foreach ($msysPath in @(
+    "/clang64/include/c++/v1",
+    "/mingw64/include/c++/v1",
+    "/ucrt64/include/c++/v1"
+  )) {
+    $candidate = Convert-MsysPathToWindowsPath -MsysBashExe $MsysBashExe -MsysPath $msysPath
+    if (-not [string]::IsNullOrWhiteSpace($candidate)) {
+      $candidateList.Add($candidate)
+    }
+  }
+
+  $candidates = $candidateList | Select-Object -Unique
 
   foreach ($candidate in $candidates) {
     if (Test-Path (Join-Path $candidate "cstdint")) {
@@ -272,10 +345,16 @@ function Resolve-OhosLibcxxIncludeDirectory {
     }
   }
 
+  $msysRoots = @(
+    (Convert-MsysPathToWindowsPath -MsysBashExe $MsysBashExe -MsysPath "/clang64"),
+    (Convert-MsysPathToWindowsPath -MsysBashExe $MsysBashExe -MsysPath "/mingw64"),
+    (Convert-MsysPathToWindowsPath -MsysBashExe $MsysBashExe -MsysPath "/ucrt64")
+  )
   $searchRoots = @(
     $sdkLlvmRoot,
     "C:\msys64\clang64",
     "C:\msys64\mingw64",
+    $msysRoots,
     "C:\Program Files\LLVM",
     "C:\Program Files (x86)\LLVM"
   ) | Where-Object {
@@ -459,7 +538,7 @@ function Ensure-LibvpxStaticLibrary {
   $sdkSysrootMsys = Convert-ToMsysPath (Join-Path $SdkDirectory "native\sysroot")
   $archIncludeMsys = "$sdkSysrootMsys/usr/include/$SysrootIncludeDir"
   $usrIncludeMsys = "$sdkSysrootMsys/usr/include"
-  $libcxxIncludeDir = Resolve-OhosLibcxxIncludeDirectory -SdkDirectory $SdkDirectory
+  $libcxxIncludeDir = Resolve-OhosLibcxxIncludeDirectory -SdkDirectory $SdkDirectory -MsysBashExe $MsysBashExe
   $libcxxIncludeMsys = Convert-ToMsysPath $libcxxIncludeDir
   $ohosCxxStdFlags = "-nostdinc++ -isystem $libcxxIncludeMsys"
   $sourceMsys = Convert-ToMsysPath $sourceDirectory
@@ -522,6 +601,7 @@ function Ensure-LibyuvStaticLibrary {
   param(
     [string]$BuildRoot,
     [string]$SdkDirectory,
+    [string]$MsysBashExe,
     [string]$VcpkgInstalledRoot,
     [string]$BindgenTarget
   )
@@ -571,7 +651,7 @@ function Ensure-LibyuvStaticLibrary {
   $sdkSysrootForward = Convert-ToForwardSlashPath $sdkSysroot
   $installRootForward = Convert-ToForwardSlashPath $installRoot
   $cFlags = "--target=$BindgenTarget --sysroot=$sdkSysrootForward -D__MUSL__ -fPIC -O2"
-  $libcxxIncludeDir = Resolve-OhosLibcxxIncludeDirectory -SdkDirectory $SdkDirectory
+  $libcxxIncludeDir = Resolve-OhosLibcxxIncludeDirectory -SdkDirectory $SdkDirectory -MsysBashExe $MsysBashExe
   $libcxxIncludeForward = Convert-ToForwardSlashPath $libcxxIncludeDir
   $cxxFlags = "$cFlags -nostdinc++ -isystem $libcxxIncludeForward"
 
@@ -648,6 +728,7 @@ function Ensure-VideoCodecStaticLibraries {
   Ensure-LibyuvStaticLibrary `
     -BuildRoot $BuildRoot `
     -SdkDirectory $SdkDirectory `
+    -MsysBashExe $MsysBashExe `
     -VcpkgInstalledRoot $VcpkgInstalledRoot `
     -BindgenTarget $BindgenTarget
 }
@@ -780,15 +861,24 @@ foreach ($candidate in $vcvarsCandidates) {
   }
 }
 
+$pathBash = Get-Command "bash.exe" -ErrorAction SilentlyContinue
+$setupBash = Resolve-MsysSetupToolPath -MsysPath "/usr/bin/bash.exe"
 $msysBashExe = Resolve-MsysTool -Candidates @(
+  $setupBash,
+  $(if ($pathBash) { $pathBash.Source } else { $null }),
   "C:\msys64\usr\bin\bash.exe",
   "$env:USERPROFILE\scoop\apps\msys2\current\usr\bin\bash.exe"
 ) -Description "MSYS2 bash.exe"
+$msysBinDir = Split-Path -Parent $msysBashExe
+$pathPerl = Get-Command "perl.exe" -ErrorAction SilentlyContinue
+$setupPerl = Resolve-MsysSetupToolPath -MsysPath "/usr/bin/perl.exe"
 $msysPerlExe = Resolve-MsysTool -Candidates @(
+  $setupPerl,
+  (Join-Path $msysBinDir "perl.exe"),
+  $(if ($pathPerl) { $pathPerl.Source } else { $null }),
   "C:\msys64\usr\bin\perl.exe",
   "$env:USERPROFILE\scoop\apps\msys2\current\usr\bin\perl.exe"
 ) -Description "MSYS2 perl.exe"
-$msysBinDir = Split-Path -Parent $msysBashExe
 
 if (-not $cargoExe) {
   throw "cargo.exe was not found. Install Rust or add cargo to PATH before building the Harmony native bridge."

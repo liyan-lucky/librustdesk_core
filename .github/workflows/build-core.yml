@@ -100,7 +100,30 @@ jobs:
 
           Write-Host "SDK root: $sdkNativeRoot"
           Write-Host "Native dir: $nativeDir"
-          Write-Host "MSYS2 clang64 libc++ cstdint exists: $(Test-Path 'C:\msys64\clang64\include\c++\v1\cstdint')"
+          $msys2Cmd = (Get-Command msys2.cmd -ErrorAction SilentlyContinue).Source
+          if (-not $msys2Cmd -and $env:RUNNER_TEMP) {
+            $candidateMsys2Cmd = Join-Path $env:RUNNER_TEMP "setup-msys2\msys2.cmd"
+            if (Test-Path $candidateMsys2Cmd) {
+              $msys2Cmd = $candidateMsys2Cmd
+            }
+          }
+          $bash = $null
+          if ($msys2Cmd) {
+            $bash = (& $msys2Cmd -c "cygpath -w /usr/bin/bash.exe").Trim()
+          }
+          if (-not $bash) {
+            $bash = (Get-Command bash.exe -ErrorAction SilentlyContinue).Source
+          }
+          if ($bash) {
+            $libcxxInclude = (& $bash -lc "if [ -f /clang64/include/c++/v1/cstdint ]; then cygpath -w /clang64/include/c++/v1; elif [ -f /mingw64/include/c++/v1/cstdint ]; then cygpath -w /mingw64/include/c++/v1; fi").Trim()
+            Write-Host "MSYS2 bash: $bash"
+            Write-Host "MSYS2 libc++ include: $libcxxInclude"
+            if (-not [string]::IsNullOrWhiteSpace($libcxxInclude)) {
+              "RUSTDESK_HARMONY_LIBCXX_INCLUDE=$libcxxInclude" | Out-File -FilePath $env:GITHUB_ENV -Append
+            }
+          } else {
+            Write-Host "MSYS2 bash was not found in PATH"
+          }
           Get-ChildItem "$nativeDir" | Select-Object Name
 
       - name: Cache Cargo
@@ -145,11 +168,27 @@ jobs:
           Invoke-WebRequest -Uri "https://downloads.xiph.org/releases/opus/opus-$opusVersion.tar.gz" -OutFile $opusZip
           tar -xzf $opusZip -C $opusRoot --strip-components=1
 
-          $env:PATH = "C:\msys64\usr\bin;$env:PATH"
+          $msys2Cmd = (Get-Command msys2.cmd -ErrorAction SilentlyContinue).Source
+          if (-not $msys2Cmd -and $env:RUNNER_TEMP) {
+            $candidateMsys2Cmd = Join-Path $env:RUNNER_TEMP "setup-msys2\msys2.cmd"
+            if (Test-Path $candidateMsys2Cmd) {
+              $msys2Cmd = $candidateMsys2Cmd
+            }
+          }
+          $bash = $null
+          if ($msys2Cmd) {
+            $bash = (& $msys2Cmd -c "cygpath -w /usr/bin/bash.exe").Trim()
+          }
+          if (-not $bash) {
+            $bash = (Get-Command bash.exe -ErrorAction Stop).Source
+          }
+          $msysBin = Split-Path -Parent $bash
+          $cygpath = Join-Path $msysBin "cygpath.exe"
+          $env:PATH = "$msysBin;$env:PATH"
 
-          $opusRootUnix = & C:\msys64\usr\bin\cygpath.exe -u $opusRoot
-          $installRootUnix = & C:\msys64\usr\bin\cygpath.exe -u $installRoot
-          $sdkUnix = & C:\msys64\usr\bin\cygpath.exe -u $env:RUSTDESK_HARMONY_HOST_SDK
+          $opusRootUnix = & $cygpath -u $opusRoot
+          $installRootUnix = & $cygpath -u $installRoot
+          $sdkUnix = & $cygpath -u $env:RUSTDESK_HARMONY_HOST_SDK
 
           $bashScript = Join-Path $env:RUNNER_TEMP "build-opus-ohos.sh"
 
@@ -173,7 +212,7 @@ jobs:
           Write-Host "==== build-opus-ohos.sh ===="
           Get-Content $bashScript
 
-          & C:\msys64\usr\bin\bash.exe $bashScript
+          & $bash $bashScript
 
           $header = Join-Path $includeDir "opus\opus_multistream.h"
           $libA = Join-Path $libDir "libopus.a"

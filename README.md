@@ -73,7 +73,7 @@ RustDesk Server / Peer
 powershell -NoProfile -ExecutionPolicy Bypass -File scripts\build_native_bridge.ps1
 ```
 
-The Windows script prepares target static dependencies before Cargo runs. On a cold runner it builds `libsodium`, downloads and builds `libvpx` `1.15.2`, downloads and builds `libyuv` revision `0faf8dd0e004520a61a603a4d2996d5ecc80dc3f`, and installs them under `VCPKG_INSTALLED_ROOT\arm64-linux`. The libvpx/libyuv C++ builds use `-nostdinc++` plus exactly one libc++ include directory, because GitHub Actions runners may not discover `<cstdint>` from `--sysroot` alone and the online SDK zip may omit SDK libc++ headers. Prefer the OpenHarmony SDK libc++ include directory; fall back to `RUSTDESK_HARMONY_LIBCXX_INCLUDE` or MSYS2 `C:\msys64\clang64\include\c++\v1`. When invoking Windows `clang++.exe` from MSYS, keep the flag as `-isystem <msys-path>` with a space so MSYS can translate the path.
+The Windows script prepares target static dependencies before Cargo runs. On a cold runner it builds `libsodium`, downloads and builds `libvpx` `1.15.2`, downloads and builds `libyuv` revision `0faf8dd0e004520a61a603a4d2996d5ecc80dc3f`, and installs them under `VCPKG_INSTALLED_ROOT\arm64-linux`. The libvpx/libyuv C++ builds use `-nostdinc++` plus exactly one libc++ include directory, because GitHub Actions runners may not discover `<cstdint>` from `--sysroot` alone and the online SDK zip may omit SDK libc++ headers. Prefer the OpenHarmony SDK libc++ include directory; fall back to `RUSTDESK_HARMONY_LIBCXX_INCLUDE` or the action-managed MSYS2 libc++ include root resolved through `msys2.cmd`/`cygpath`. When invoking Windows `clang++.exe` from MSYS, keep the flag as `-isystem <msys-path>` with a space so MSYS can translate the path.
 
 ### Linux
 
@@ -131,5 +131,6 @@ See `scripts/rename_mapping.js` for complete mapping.
 
 - Outgoing remote-control sessions use the real RustDesk session path and publish video through `on_rgba -> publish_real_video_frame -> video-frame`.
 - OHOS outgoing viewer video decode uses software VP8/VP9 through `libvpx` plus YUV-to-RGBA conversion through `libyuv`. `codec_ohos.rs` must not advertise VP9 support unless `handle_video_frame()` can decode frames and call `GoogleImage::to()`.
+- Keep libvpx VP8/VP9 encoders enabled unless `scrap` bindings are redesigned. `scrap/src/bindings/vpx_ffi.h` includes `vp8cx.h` and `vpx_encoder.h`, and `common/vpxcodec.rs` references encoder APIs even when the current OHOS user flow is viewer-side decode.
 - Harmony incoming/controlled-side screen sharing is not available yet because the desktop server thread and Harmony screen-capture pipeline are not wired on this target.
 - `main_start_service(true)` must return `incomingReady=false` with a clear error while that pipeline is missing. Do not mark incoming ready just because rendezvous/options were refreshed; that makes remote clients wait forever for a video stream that cannot exist.

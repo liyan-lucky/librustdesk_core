@@ -4,7 +4,7 @@
 
 > 2026-06-13 经验：如果手机端已 `session-connected` 且 `quality-status` 显示 `codec_format=VP9`，但没有 `video-frame`，先看 `CORE.md` 的 OHOS VP8/VP9 解码修复记录和 `CONNECTION_DEBUG_LOG.md`，不要只查 `session_next_rgba()`。
 
-> 2026-06-13 CI note: if the online Windows runner fails building libvpx with `<cstdint>` not found, check `scripts/build_native_bridge.ps1` CXX flags for `-nostdinc++` plus one libc++ include path before changing codec code. The online SDK zip may omit SDK libc++ headers, so the workflow installs MSYS2 `mingw-w64-clang-x86_64-libc++` and the script can fall back to `C:\msys64\clang64\include\c++\v1`. For Windows `clang++.exe` launched by MSYS, use `-isystem <msys-path>` as two argv entries; `-isystem/path` is not MSYS-converted.
+> 2026-06-13 CI note: if the online Windows runner fails building libvpx with `<cstdint>` not found, check `scripts/build_native_bridge.ps1` CXX flags for `-nostdinc++` plus one libc++ include path before changing codec code. The online SDK zip may omit SDK libc++ headers, so the workflow installs MSYS2 `mingw-w64-clang-x86_64-libc++`; resolve the actual setup-msys2 root through `msys2.cmd`/`cygpath`, not fixed `C:\msys64`. For Windows `clang++.exe` launched by MSYS, use `-isystem <msys-path>` as two argv entries; `-isystem/path` is not MSYS-converted. Do not disable libvpx VP8/VP9 encoders unless `scrap` bindings and `common/vpxcodec.rs` are changed too.
 
 ## 文档列表
 
