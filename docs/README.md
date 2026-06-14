@@ -14,6 +14,8 @@
 
 > 2026-06-14 release note: commit `38c837cee0bb28aee795c0fc3895044f1440f96a` was published by run `27483922931` as `core-71`; asset size `131,297,004` bytes, SHA256 `C750A785297AA22A2518B158BF334A1B1415C4E0739E01D0856C8BB5D450E15C`. Build the core from the real `%VSCODE_ROOT%\13_librustdesk_core` path, not from the app project's junction.
 
+> 2026-06-14 release note: commit `275b231e11aefd4a2e51050fc74fbdeba9c566bd` was published by run `27485061967` as `core-73`; asset size `131,471,532` bytes, SHA256 `E444D739EC958CD1485519FE0A712BFC1F074B60EEA65D71552E7E95A909A7B1`. The app downloaded this release and full HAP/package verification passed; runtime launch was blocked only by the phone lock screen.
+
 ## 文档列表
 
 | 文件 | 说明 |

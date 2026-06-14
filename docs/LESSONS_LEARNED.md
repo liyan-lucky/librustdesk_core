@@ -29,6 +29,7 @@
 - Event names must match the app listener contract exactly; do not hide distinct operations behind a generic event if ArkTS routes by event kind.
 - When the app has both a direct session function and a generic option helper, audit the UI's actual path. The RemoteControl "Switch Sides" menu uses `applySessionOption('switch-sides', 'Y')`, so the core option route must call `Session::switch_sides()` even though `session_switch_sides()` also exists.
 - Local validation for this fix before push: `scripts\build_native_bridge.ps1 -Profile release` from the real core path passed; produced `librustdesk_core.a` size `128,994,138` bytes, SHA256 `24F7729894862CD9ACBC44266C03563CDD8C9E2CC1AC81D0827A22E89C7A181F`.
+- Release validation for this fix: commit `275b231e11aefd4a2e51050fc74fbdeba9c566bd`, GitHub Actions run `27485061967`, release `core-73`, asset size `131,471,532` bytes, SHA256 `E444D739EC958CD1485519FE0A712BFC1F074B60EEA65D71552E7E95A909A7B1`. The app full HAP build/package verification/install passed after downloading core-73; runtime launch was blocked by device lock screen, not by the core artifact.
 
 ## 2026-06-14: Build from the real core path, not the app junction
 
