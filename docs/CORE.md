@@ -22,6 +22,7 @@
 - 2026-06-14 源码更新：文件传输不只要求 NAPI/C ABI 名称对齐，还必须让 `HarmonyHandler` 回流 app 监听的事件。`job-error`、`job-done`、`job-progress`、`folder-files`、`create-remote-dir`、`delete-remote-path`、`file-transfer-start` 等事件已接入；`switch-sides` option 路径也已路由到 official `Session::switch_sides()`。commit `275b231e11aefd4a2e51050fc74fbdeba9c566bd` 已由 GitHub Actions run `27485061967` 发布为 `core-73`，release asset `131,471,532` bytes，SHA256 `E444D739EC958CD1485519FE0A712BFC1F074B60EEA65D71552E7E95A909A7B1`。
 - 2026-06-14 源码更新：`apply_session_option("switch-sides", "Y")` 已路由到 official `Session::switch_sides()`，避免 app 菜单已有 direct API 但实际 UI 路径仍落到 unsupported option 分支。
 - 2026-06-14 源码更新：旧副本 `rustdesk-master/src/harmony_bridge/harmony_bridge/core.rs` 的 `send_clipboard_data()` 已与 active bridge 对齐，改为构造 `Clipboard` protobuf 并通过 active `Session` 发送，避免未来从旧副本同步/生成时剪贴板退回 `false` stub。本地 release 构建通过，产物仍为 `128,994,138` bytes，SHA256 `24F7729894862CD9ACBC44266C03563CDD8C9E2CC1AC81D0827A22E89C7A181F`。
+- 2026-06-14 发布验证：commit `1b987914a2c27ace376e5af45a9c6790d84d40b4` 已由 GitHub Actions run `27486100946` 发布为 `core-74`，release asset `131,471,786` bytes，SHA256 `3755D448FBB1A583E7B5F7C3C6ADEC29D8AF0FBB7E5DD192251CD18A68C45D7C`；11 App 已下载 latest core，全量 HAP 构建/验包/无线安装通过，设备锁屏仍阻断启动运行态。
 
 ## 架构总览
 
@@ -107,27 +108,27 @@ Native core:
 
 - 文件：`entry/src/main/libs/arm64/librustdesk_core.a`
 - Source URL: `https://github.com/liyan-lucky/librustdesk_core/releases/latest/download/librustdesk_core.a`
-- Release: `https://github.com/liyan-lucky/librustdesk_core/releases/tag/core-73`
-- Workflow: `https://github.com/liyan-lucky/librustdesk_core/actions/runs/27485061967`
-- Commit: `275b231e11aefd4a2e51050fc74fbdeba9c566bd`
-- Size: `131,471,532` bytes (`125.38 MB`)
-- Build time observed: `2026-06-14 03:24`
-- FNV-1a 1MB: `350b250e`
-- SHA256: `E444D739EC958CD1485519FE0A712BFC1F074B60EEA65D71552E7E95A909A7B1`
+- Release: `https://github.com/liyan-lucky/librustdesk_core/releases/tag/core-74`
+- Workflow: `https://github.com/liyan-lucky/librustdesk_core/actions/runs/27486100946`
+- Commit: `1b987914a2c27ace376e5af45a9c6790d84d40b4`
+- Size: `131,471,786` bytes (`125.38 MB`)
+- Build time observed: `2026-06-14 04:06`
+- FNV-1a 1MB: `404ef789`
+- SHA256: `3755D448FBB1A583E7B5F7C3C6ADEC29D8AF0FBB7E5DD192251CD18A68C45D7C`
 - 已知异常 CI release：`core-62` 由 Cargo `dev` profile 生成，产物大小为 `595,083,124` bytes (`567.52 MiB`)，不要作为 HAP 核心来源使用。
 
 HAP:
 
-- Local BuildInfo compile time: `2026-06-14 03:24`
-- Local app version: `0.18.0`
-- Local versionCode: `1000088`
+- Local BuildInfo compile time: `2026-06-14 04:06`
+- Local app version: `0.19.0`
+- Local versionCode: `1000090`
 - Bundle: `com.open.rundesk`
 - ABI: `arm64-v8a`
 - Latest online release: `https://github.com/liyan-lucky/rustdesk_harmonyos/releases/tag/harmonyos-20260612-065038`
 - Current release rule: HAP-only; do not generate APP, `.app.zip`, `manifest.json`, or `SHA256SUMS.txt`
 - USB target used for validation: configured by `RUSTDESK_HARMONY_USB_TARGET`; hardware IDs are not recorded in docs.
 - Wireless target used for validation: `192.168.11.100:36169`
-- Latest local validation: 2026-06-14 core-73 downloaded into the app project, full HAP build passed, `verify_native_harmonyos_hap.ps1 -SkipLaunch -SkipLogs` passed, and WiFi install succeeded on `192.168.11.100:36169`; launch was blocked by the device lock screen (`Error Code:10106102`), so runtime `coreReady` verification for core-73 is pending unlock. Latest successful launch/runtime evidence remains the core-71 run from the same date.
+- Latest local validation: 2026-06-14 core-74 downloaded into the app project, full HAP build passed, signed HAP `18,828,000` bytes with SHA256 `4BF796ED37DD1FCADF455F1585A55E36CFFC58940235D82FCAC55C6CBA6042A1`, `verify_native_harmonyos_hap.ps1 -SkipLaunch -SkipLogs` passed, and WiFi install succeeded on `192.168.11.100:36169`; `bm dump` showed `versionName=0.19.0`, `versionCode=1000090`, native library path `entry/libs/arm64`. Launch was blocked by the device lock screen (`Error Code:10106102`), so runtime `coreReady` verification for core-74 is pending unlock. Latest successful launch/runtime evidence remains the core-71 run from the same date.
 - 2026-06-09 wireless validation: HAP install and launch succeeded. hilog confirmed `coreReady=true`, `adapter=official-native`, Bridge 在线查询正常，远控连接建立。
 - **1.4.7 升级已完成**: 上游源码已升级到 1.4.7，native core 在线构建发布成功，HAP/APP 在线构建发布通过。
 - **2026-06-07 修复**: (1) 无密码连接时密码输入框丢失——`RemoteControl.ets` applyBridgeState error/idle 分支优先检查 `shouldPromptForPassword`；(2) 无密码连接被访问端刚提示就结束会话——`handleTerminalBridgeEvent` 将密码检查扩展到 `session-closed`；(3) LAN 发现失效——`rendezvous_mediator_ohos.rs` start_all() 中启动 `crate::lan::start_listening()` 监听线程。

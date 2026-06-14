@@ -18,6 +18,7 @@
 
 - Updated the old mirror `send_clipboard_data()` to match the active implementation: require an active session, build `Clipboard { format: Text, content, compress: false }`, wrap it in `Message`, and send it through the official session.
 - Local release build from the real core path passed after the change; the produced active artifact hash stayed unchanged because this mirror is not currently part of the compiled path.
+- Release validation for this mirror sync: commit `1b987914a2c27ace376e5af45a9c6790d84d40b4`, GitHub Actions run `27486100946`, release `core-74`, asset size `131,471,786` bytes, SHA256 `3755D448FBB1A583E7B5F7C3C6ADEC29D8AF0FBB7E5DD192251CD18A68C45D7C`. The app full HAP build/package verification/install passed after downloading core-74 as version `0.19.0`; runtime launch was blocked by device lock screen, not by the core artifact.
 
 ### Avoidance
 
