@@ -473,15 +473,15 @@ pub fn send_audio_frame_metadata(
 pub fn send_chat_message(content: &str) -> bool {
     let normalized = content.trim();
     if normalized.is_empty() {
-        queue_event("chat-message", "failed=empty-content", &get_active_peer_id());
+        queue_event("chat-error", "failed=empty-content", &get_active_peer_id());
         return false;
     }
     let Some(session) = active_session().lock().unwrap().as_ref().cloned() else {
-        queue_event("chat-message", "failed=no-active-session", "");
+        queue_event("chat-error", "failed=no-active-session", "");
         return false;
     };
     session.send_chat(normalized.to_owned());
-    queue_event("chat-message", normalized, &get_active_peer_id());
+    queue_event("chat-sent", normalized, &get_active_peer_id());
     true
 }
 
