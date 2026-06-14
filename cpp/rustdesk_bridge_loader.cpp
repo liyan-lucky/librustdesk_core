@@ -523,11 +523,12 @@ napi_value SendAudioFrameMetadata(napi_env env, napi_callback_info info) {
 }
 
 napi_value SendChatMessage(napi_env env, napi_callback_info info) {
-  size_t argc = 1;
-  napi_value args[1] = {nullptr};
+  size_t argc = 4;
+  napi_value args[4] = {nullptr};
   napi_get_cb_info(env, info, &argc, args, nullptr, nullptr);
   std::string content;
-  if (argc > 0) ReadUtf8String(env, args[0], &content);
+  if (argc > 2) ReadUtf8String(env, args[2], &content);
+  else if (argc > 0) ReadUtf8String(env, args[0], &content);
   return MakeBool(env, rustdesk_bridge_session_send_chat(content.c_str()) != 0);
 }
 
@@ -858,11 +859,12 @@ napi_value SessionCtrlAltDel(napi_env env, napi_callback_info info) {
 }
 
 napi_value SessionSendChat(napi_env env, napi_callback_info info) {
-  size_t argc = 1;
-  napi_value args[1] = {nullptr};
+  size_t argc = 4;
+  napi_value args[4] = {nullptr};
   napi_get_cb_info(env, info, &argc, args, nullptr, nullptr);
   std::string content;
-  if (argc > 0) ReadUtf8String(env, args[0], &content);
+  if (argc > 2) ReadUtf8String(env, args[2], &content);
+  else if (argc > 0) ReadUtf8String(env, args[0], &content);
   return MakeBool(env, rustdesk_bridge_session_send_chat(content.c_str()) != 0);
 }
 

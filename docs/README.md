@@ -6,6 +6,8 @@
 
 > 2026-06-13 CI note: if the online Windows runner fails building libvpx with `<cstdint>` not found, do not fall back to MSYS2 libc++ for OHOS clang. Run `27458902852` showed MSYS2 libc++ can be too new for the SDK clang. Build only the `libvpx.a` target and manually install the public headers, because the failing C++ RTC sources are for unused `libvpxrc.a`. Do not disable libvpx VP8/VP9 encoders unless `scrap` bindings and `common/vpxcodec.rs` are changed too.
 
+> 2026-06-14 bridge note: terminal open/input/resize/close must call official `Session` and terminal data must travel through events as base64 `dataBase64`; empty audio frame queues return `[]`. Chat NAPI four-argument calls read content from `args[2]`.
+
 ## 文档列表
 
 | 文件 | 说明 |

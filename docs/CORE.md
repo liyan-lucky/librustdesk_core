@@ -18,6 +18,7 @@
   - `Native Module`
   - `Native Core`
 - 当前核心已经接入真实 RustDesk 会话路径，不能再按旧文档理解为“真实网络未实现”。
+- 2026-06-14 源码更新：`session_open_terminal/session_send_terminal_input/session_resize_terminal/session_close_terminal` 已从 stub 改为调用 official `Session`；`HarmonyHandler.handle_terminal_response()` 会回流 `terminal-response`、`terminal-output`、`terminal-closed` 事件，终端 data 使用 base64；`pull_audio_frames_json()` 空队列返回 `[]`；`cpp/rustdesk_bridge_loader.cpp` 的 `SendChatMessage`/`SessionSendChat` 已兼容四参读 `args[2]`。
 
 ## 架构总览
 
@@ -75,6 +76,9 @@ RustDesk Server / Peer
   - `send_ctrl_alt_del()` 调用 active session 的 official `ctrl_alt_del()`，不能用普通键盘按键模拟替代。
   - `get_peer_info(peer_id)` 从 `PeerConfig.info` 返回 hostname、username、platform、alias。
   - `HarmonyHandler.close_success()` 只能表示官方 UI 的连接成功提示关闭；首帧时也会触发，必须保持 `connected` 并上报 `connection-ready`，不能映射成 `session-closed`。
+  - `session_open_terminal()`、`session_send_terminal_input()`、`session_resize_terminal()`、`session_close_terminal()` 必须调用 official `Session`，不能回退为 `false` stub。
+  - `handle_terminal_response()` 必须把 `TerminalResponse::Data` 编码为 `dataBase64` 后发事件，避免 ANSI/control bytes 破坏 session event JSON。
+  - `pull_audio_frames_json()` 没有帧时必须返回 `[]`，不能返回 `{}`。
 - OHOS platform stubs 必须避免依赖桌面 Linux/Windows API。
 - ArkTS 输入必须按官方 RustDesk mouse mask 编码：
   - 低 3 bit 是 event type。

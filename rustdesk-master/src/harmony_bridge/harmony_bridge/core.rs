@@ -171,7 +171,7 @@ pub fn pull_session_events_json() -> String {
 
 /// Pulls pending audio frames as a JSON string.
 pub fn pull_audio_frames_json() -> String {
-    "{}".to_owned()
+    "[]".to_owned()
 }
 
 /// Returns the latest video frame metadata as JSON since the given frame ID.
@@ -802,7 +802,76 @@ impl InvokeUiSession for HarmonyHandler {
     fn update_record_status(&self, _start: bool) {}
     fn printer_request(&self, _id: i32, _path: String) {}
     fn handle_screenshot_resp(&self, _sid: String, _msg: String) {}
-    fn handle_terminal_response(&self, _response: TerminalResponse) {}
+    fn handle_terminal_response(&self, response: TerminalResponse) {
+        use hbb_common::message_proto::terminal_response::Union;
+
+        let peer_id = get_active_peer_id();
+        match response.union {
+            Some(Union::Opened(opened)) => {
+                let detail = json!({
+                    "type": "opened",
+                    "terminal_id": opened.terminal_id,
+                    "success": opened.success,
+                    "message": opened.message,
+                    "pid": opened.pid,
+                    "service_id": opened.service_id,
+                    "persistent_sessions": opened.persistent_sessions,
+                    "replay_terminal_output": opened.replay_terminal_output,
+                })
+                .to_string();
+                queue_event("terminal-response", &detail, &peer_id);
+                queue_event(
+                    if opened.success {
+                        "terminal-opened"
+                    } else {
+                        "terminal-error"
+                    },
+                    &detail,
+                    &peer_id,
+                );
+            }
+            Some(Union::Data(data)) => {
+                let output_data = if data.compressed {
+                    hbb_common::compress::decompress(&data.data)
+                } else {
+                    data.data.to_vec()
+                };
+                let detail = json!({
+                    "type": "data",
+                    "terminal_id": data.terminal_id,
+                    "dataBase64": crate::encode64(&output_data),
+                    "compressed": false,
+                })
+                .to_string();
+                queue_event("terminal-response", &detail, &peer_id);
+                queue_event("terminal-output", &detail, &peer_id);
+            }
+            Some(Union::Closed(closed)) => {
+                let detail = json!({
+                    "type": "closed",
+                    "terminal_id": closed.terminal_id,
+                    "exit_code": closed.exit_code,
+                })
+                .to_string();
+                queue_event("terminal-response", &detail, &peer_id);
+                queue_event("terminal-closed", &detail, &peer_id);
+            }
+            Some(Union::Error(error)) => {
+                let detail = json!({
+                    "type": "error",
+                    "terminal_id": error.terminal_id,
+                    "message": error.message,
+                })
+                .to_string();
+                queue_event("terminal-response", &detail, &peer_id);
+                queue_event("terminal-error", &detail, &peer_id);
+            }
+            None => {}
+            Some(_) => {
+                queue_event("terminal-error", "{\"type\":\"unknown\"}", &peer_id);
+            }
+        }
+    }
 }
 
 fn mark_peer_connected_with_cached_info(peer_id: &str) {
@@ -1049,26 +1118,84 @@ pub fn lock_remote_screen() -> bool {
 
 /// Opens a terminal with the given ID and dimensions.
 /// Returns true if the terminal was opened successfully.
-pub fn open_terminal(_terminal_id: c_int, _rows: c_int, _cols: c_int) -> bool {
-    false
+pub fn open_terminal(terminal_id: c_int, rows: c_int, cols: c_int) -> bool {
+    let Some(session) = active_session().lock().unwrap().as_ref().cloned() else {
+        queue_event(
+            "terminal-error",
+            &json!({"type":"error","terminal_id":terminal_id,"message":"no active session"})
+                .to_string(),
+            "",
+        );
+        return false;
+    };
+    let normalized_rows = if rows > 0 { rows as u32 } else { 24 };
+    let normalized_cols = if cols > 0 { cols as u32 } else { 80 };
+    session.open_terminal(terminal_id, normalized_rows, normalized_cols);
+    queue_event(
+        "terminal-response",
+        &json!({
+            "type":"open-requested",
+            "terminal_id":terminal_id,
+            "rows":normalized_rows,
+            "cols":normalized_cols
+        })
+        .to_string(),
+        &get_active_peer_id(),
+    );
+    true
 }
 
 /// Sends input data to the terminal with the given ID.
 /// Returns true if the input was sent successfully.
-pub fn send_terminal_input(_terminal_id: c_int, _data: &str) -> bool {
-    false
+pub fn send_terminal_input(terminal_id: c_int, data: &str) -> bool {
+    if data.is_empty() {
+        return false;
+    }
+    let Some(session) = active_session().lock().unwrap().as_ref().cloned() else {
+        queue_event(
+            "terminal-error",
+            &json!({"type":"error","terminal_id":terminal_id,"message":"no active session"})
+                .to_string(),
+            "",
+        );
+        return false;
+    };
+    session.send_terminal_input(terminal_id, data.to_owned());
+    true
 }
 
 /// Resizes the terminal with the given ID to the specified dimensions.
 /// Returns true if the resize was successful.
-pub fn resize_terminal(_terminal_id: c_int, _rows: c_int, _cols: c_int) -> bool {
-    false
+pub fn resize_terminal(terminal_id: c_int, rows: c_int, cols: c_int) -> bool {
+    let Some(session) = active_session().lock().unwrap().as_ref().cloned() else {
+        queue_event(
+            "terminal-error",
+            &json!({"type":"error","terminal_id":terminal_id,"message":"no active session"})
+                .to_string(),
+            "",
+        );
+        return false;
+    };
+    let normalized_rows = if rows > 0 { rows as u32 } else { 24 };
+    let normalized_cols = if cols > 0 { cols as u32 } else { 80 };
+    session.resize_terminal(terminal_id, normalized_rows, normalized_cols);
+    true
 }
 
 /// Closes the terminal with the given ID.
 /// Returns true if the terminal was closed successfully.
-pub fn close_terminal(_terminal_id: c_int) -> bool {
-    false
+pub fn close_terminal(terminal_id: c_int) -> bool {
+    let Some(session) = active_session().lock().unwrap().as_ref().cloned() else {
+        queue_event(
+            "terminal-error",
+            &json!({"type":"error","terminal_id":terminal_id,"message":"no active session"})
+                .to_string(),
+            "",
+        );
+        return false;
+    };
+    session.close_terminal(terminal_id);
+    true
 }
 
 /// Reads the remote directory at the given path.

@@ -2,6 +2,35 @@
 
 > 记录容易复发的构建、发布和排查问题。新增经验时优先写清楚：现象、根因、修复、以后如何避免。
 
+## 2026-06-14: Terminal bridge and media event payloads
+
+### Symptom
+
+- The Harmony app had `Terminal.ets`, `TerminalService.ets`, NAPI declarations, and C ABI wrappers, but terminal open/input/resize/close still failed.
+- Remote terminal output would be unsafe to place in the session-event JSON `detail` field as raw text because it can contain ANSI/control bytes.
+- `pull_audio_frames_json()` returned `{}` for an empty queue, while the app audio poller expects an array.
+- App chat used four arguments, but the core project C++ bridge still read `args[0]`, which can turn peer id into the message body.
+
+### Root cause
+
+- Interface-name parity was checked, but the Harmony Rust bridge implementation still had terminal functions returning `false`.
+- The event bus is JSON text, not a binary-safe terminal transport.
+- Empty media queues must match the consumer contract; `{}` and `[]` are not interchangeable.
+- The App project had already fixed C++ chat argument reading, but the source-of-truth core project had not been synchronized.
+
+### Fix
+
+- `rustdesk-master/src/harmony_bridge/core.rs` now forwards terminal open/input/resize/close to official `Session`.
+- `HarmonyHandler.handle_terminal_response()` emits `terminal-response`, `terminal-output`, and `terminal-closed`; terminal data is decompressed if needed and base64 encoded as `dataBase64`.
+- `pull_audio_frames_json()` returns `[]` when no frames are available.
+- `cpp/rustdesk_bridge_loader.cpp` reads chat content from `args[2]` for four-argument calls, with `args[0]` fallback for old one-argument calls.
+
+### Avoidance
+
+- For any "App has UI but feature does not work" issue, verify ArkTS -> NAPI -> C ABI -> Rust bridge -> official Session -> event return path.
+- Do not put raw binary/control-byte payloads into `queue_event()` detail; encode them first.
+- Keep 13 core C++ bridge and 11 App C++ bridge in sync before publishing a new core.
+
 ## 2026-06-13: libvpx RTC C++ targets and OHOS libc++ include paths
 
 ### Symptom
