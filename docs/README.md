@@ -20,7 +20,7 @@
 
 > 2026-06-14 release note: commit `1b987914a2c27ace376e5af45a9c6790d84d40b4` was published by run `27486100946` as `core-74`; asset size `131,471,786` bytes, SHA256 `3755D448FBB1A583E7B5F7C3C6ADEC29D8AF0FBB7E5DD192251CD18A68C45D7C`. The app downloaded this release and full HAP/package verification/install passed as version `0.19.0`; runtime launch was blocked only by the phone lock screen.
 
-> 2026-06-15 中文说明：核心 C++ 源项目的 `rustdesk_bridge_session_send_chat` 声明/调用仍停留在旧一参版本，和 Rust ABI 四参签名不一致；本轮已同步为 `peer_id/message_type/content/timestamp` 四参并保留一参 fallback。预计线上发布标签：`core-77`，待 GitHub Actions 完成后回填实际 run、asset 和 SHA256。
+> 2026-06-15 中文说明：核心 C++ 源项目的 `rustdesk_bridge_session_send_chat` 声明/调用仍停留在旧一参版本，和 Rust ABI 四参签名不一致；本轮已同步为 `peer_id/message_type/content/timestamp` 四参并保留一参 fallback。同时核心 d.ts 补齐自定义服务器 `key` 参数，避免覆盖 app 副本。预计线上发布标签：`core-77`，待 GitHub Actions 完成后回填实际 run、asset 和 SHA256。
 
 ## 文档列表
 

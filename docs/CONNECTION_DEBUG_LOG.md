@@ -13,7 +13,8 @@
 
 - `cpp/rustdesk_bridge_abi.h`：`rustdesk_bridge_session_send_chat` 改为 `peer_id/message_type/content/timestamp` 四参。
 - `cpp/rustdesk_bridge_loader.cpp`：`SendChatMessage` 与 `SessionSendChat` 读取 `args[2]` 作为 content，透传四参；保留旧一参 fallback。
-- 中文发布说明：本轮核心修复预计发布标签 `core-77`，用于防止聊天发送 content 参数错位回归。
+- `cpp/types/librustdesk_bridge/index.d.ts`：补齐 `connectToPeer` 和 `setIncomingServiceEnabled` 的自定义服务器 `key` 参数，保持 13 核心源项目和 11 App 同步副本一致。
+- 中文发布说明：本轮核心修复预计发布标签 `core-77`，用于防止聊天发送 content 参数错位和自建服务器 key 参数遗漏回归。
 
 ### 验证
 

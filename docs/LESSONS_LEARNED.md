@@ -20,12 +20,12 @@
 - Updated `cpp/rustdesk_bridge_abi.h` to the four-argument signature: `peer_id`, `message_type`, `content`, `timestamp`.
 - Updated `SendChatMessage` and `SessionSendChat` to read `args[2]` as content for four-argument calls, pass all four values to Rust, and retain `args[0]` fallback for legacy one-argument calls.
 - Local release build from the real core path passed. Produced `librustdesk_core.a` size `128,882,788` bytes, SHA256 `D0654CC920619957D99E640B7E18969135D224A0F562E26188241B41F47BC45A`.
-- 中文发布说明：本轮核心更新用于防止聊天发送 ABI 再次错位；预计发布标签 `core-77`，待 GitHub Actions 完成后回填实际 run、tag、asset 和 SHA256。
+- 中文发布说明：本轮核心更新用于防止聊天发送 ABI 再次错位，并补齐核心 d.ts 中自定义服务器 `key` 参数，避免下一次同步覆盖 app 副本；预计发布标签 `core-77`，待 GitHub Actions 完成后回填实际 run、tag、asset 和 SHA256。
 
 ### Avoidance
 
 - When Rust `#[no_mangle] extern "C"` signatures change, audit all three layers together: `bridge_api.rs`, `cpp/rustdesk_bridge_abi.h`, and `cpp/rustdesk_bridge_loader.cpp`.
-- Also compare the 13 core `cpp/` source and the 11 app `entry/src/main/cpp/` copy before publishing, because the app copy can be newer than the core source after emergency fixes.
+- Also compare the 13 core `cpp/` source and the 11 app `entry/src/main/cpp/` copy before publishing, because the app copy can be newer than the core source after emergency fixes. Expected differences should be limited to project-local CMake paths.
 
 ## 2026-06-14: Keep inactive Harmony source mirrors from regressing working paths
 
