@@ -16,6 +16,8 @@
 
 > 2026-06-14 release note: commit `275b231e11aefd4a2e51050fc74fbdeba9c566bd` was published by run `27485061967` as `core-73`; asset size `131,471,532` bytes, SHA256 `E444D739EC958CD1485519FE0A712BFC1F074B60EEA65D71552E7E95A909A7B1`. The app downloaded this release and full HAP/package verification passed; runtime launch was blocked only by the phone lock screen.
 
+> 2026-06-14 source-mirror note: keep `rustdesk-master/src/harmony_bridge/harmony_bridge/core.rs` aligned with the active Harmony bridge for features that already work in the active path. The old copy's `send_clipboard_data()` must also build a `Clipboard` protobuf and call `session.send(Data::Message(...))`, not return `false`.
+
 ## 文档列表
 
 | 文件 | 说明 |

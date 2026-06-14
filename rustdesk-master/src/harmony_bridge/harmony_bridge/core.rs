@@ -425,8 +425,21 @@ pub fn send_ctrl_alt_del() -> bool {
 
 /// Sends clipboard data with the given content and timestamp.
 /// Returns true if the data was sent successfully.
-pub fn send_clipboard_data(_content: &str, _timestamp: i64) -> bool {
-    false
+pub fn send_clipboard_data(content: &str, _timestamp: i64) -> bool {
+    let Some(session) = active_session().lock().unwrap().as_ref().cloned() else {
+        return false;
+    };
+    use hbb_common::message_proto::{Clipboard, ClipboardFormat, Message};
+    let clipboard = Clipboard {
+        compress: false,
+        content: bytes::Bytes::from(content.to_owned()),
+        format: ClipboardFormat::Text.into(),
+        ..Default::default()
+    };
+    let mut msg = Message::new();
+    msg.set_clipboard(clipboard);
+    session.send(Data::Message(msg));
+    true
 }
 
 /// Sends video frame metadata.

@@ -21,6 +21,7 @@
 - 2026-06-14 源码更新：`session_open_terminal/session_send_terminal_input/session_resize_terminal/session_close_terminal` 已从 stub 改为调用 official `Session`；`HarmonyHandler.handle_terminal_response()` 会回流 `terminal-response`、`terminal-output`、`terminal-closed` 事件，终端 data 使用 base64；`pull_audio_frames_json()` 空队列返回 `[]`；`cpp/rustdesk_bridge_loader.cpp` 的 `SendChatMessage`/`SessionSendChat` 已兼容四参读 `args[2]`。commit `38c837cee0bb28aee795c0fc3895044f1440f96a` 已由 GitHub Actions run `27483922931` 发布为 `core-71`。
 - 2026-06-14 源码更新：文件传输不只要求 NAPI/C ABI 名称对齐，还必须让 `HarmonyHandler` 回流 app 监听的事件。`job-error`、`job-done`、`job-progress`、`folder-files`、`create-remote-dir`、`delete-remote-path`、`file-transfer-start` 等事件已接入；`switch-sides` option 路径也已路由到 official `Session::switch_sides()`。commit `275b231e11aefd4a2e51050fc74fbdeba9c566bd` 已由 GitHub Actions run `27485061967` 发布为 `core-73`，release asset `131,471,532` bytes，SHA256 `E444D739EC958CD1485519FE0A712BFC1F074B60EEA65D71552E7E95A909A7B1`。
 - 2026-06-14 源码更新：`apply_session_option("switch-sides", "Y")` 已路由到 official `Session::switch_sides()`，避免 app 菜单已有 direct API 但实际 UI 路径仍落到 unsupported option 分支。
+- 2026-06-14 源码更新：旧副本 `rustdesk-master/src/harmony_bridge/harmony_bridge/core.rs` 的 `send_clipboard_data()` 已与 active bridge 对齐，改为构造 `Clipboard` protobuf 并通过 active `Session` 发送，避免未来从旧副本同步/生成时剪贴板退回 `false` stub。本地 release 构建通过，产物仍为 `128,994,138` bytes，SHA256 `24F7729894862CD9ACBC44266C03563CDD8C9E2CC1AC81D0827A22E89C7A181F`。
 
 ## 架构总览
 
@@ -84,6 +85,7 @@ RustDesk Server / Peer
   - `session_send_files()` 必须复用同一个 `job_id` 调 official `send_files()` 并发 `file-transfer-start`，否则 ArkTS 侧无法把后续 `job-progress/job-done/job-error` 和任务对应起来。
   - `session_create_dir()` 和 `delete_remote_path()` 成功路径必须分别发 `create-remote-dir`、`delete-remote-path`，不能发泛化的 `file-transfer`。
   - `apply_session_option()` 中 app 菜单会走到的命令 key 必须实际调用 official `Session`；`switch-sides` 不能因为已有 `session_switch_sides()` direct API 就在 option 路径返回 unsupported。
+  - 旧副本 `harmony_bridge/harmony_bridge/core.rs` 中已接通的功能也要同步；`send_clipboard_data()` 不能保持 `false` stub。
   - `pull_audio_frames_json()` 没有帧时必须返回 `[]`，不能返回 `{}`。
 - OHOS platform stubs 必须避免依赖桌面 Linux/Windows API。
 - ArkTS 输入必须按官方 RustDesk mouse mask 编码：

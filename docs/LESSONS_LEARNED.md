@@ -2,6 +2,28 @@
 
 > 记录容易复发的构建、发布和排查问题。新增经验时优先写清楚：现象、根因、修复、以后如何避免。
 
+## 2026-06-14: Keep inactive Harmony source mirrors from regressing working paths
+
+### Symptom
+
+- The active `rustdesk-master/src/harmony_bridge/core.rs` already sent text clipboard data by building a RustDesk `Clipboard` protobuf and calling `session.send(Data::Message(...))`.
+- The older mirror at `rustdesk-master/src/harmony_bridge/harmony_bridge/core.rs` still returned `false` from `send_clipboard_data()`.
+
+### Root cause
+
+- Previous audits focused on the active compile path, while the repository still keeps an older Harmony bridge copy that can be used for comparison or future synchronization.
+- A stale stub in that mirror can reintroduce a bug if code is copied back from the wrong file.
+
+### Fix
+
+- Updated the old mirror `send_clipboard_data()` to match the active implementation: require an active session, build `Clipboard { format: Text, content, compress: false }`, wrap it in `Message`, and send it through the official session.
+- Local release build from the real core path passed after the change; the produced active artifact hash stayed unchanged because this mirror is not currently part of the compiled path.
+
+### Avoidance
+
+- When a feature is fixed in `src/harmony_bridge/core.rs`, grep the old `src/harmony_bridge/harmony_bridge/core.rs` mirror for the same function before publishing.
+- If the mirror is intentionally inactive, still keep user-visible behavior stubs aligned for clipboard, terminal, file transfer, and session command paths.
+
 ## 2026-06-14: File transfer needs callback-event parity, not just API parity
 
 ### Symptom
