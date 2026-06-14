@@ -1023,7 +1023,10 @@ pub fn apply_session_option(key: &str, value: &str) -> bool {
             session.take_screenshot(0, format!("harmony-{}", current_timestamp_millis()));
             true
         }
-        "switch-sides" => false,
+        "switch-sides" => {
+            session.switch_sides();
+            true
+        }
         "session-action" => false,
         _ => {
             session.set_option(key.to_owned(), value.to_owned());

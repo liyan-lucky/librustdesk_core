@@ -10,6 +10,8 @@
 
 > 2026-06-14 file-transfer note: checking ArkTS/NAPI/C ABI names is not enough. `InvokeUiSession` callbacks must emit the app listener events (`folder-files`, `file-transfer-start`, `job-progress`, `job-done`, `job-error`, `create-remote-dir`, `delete-remote-path`) and transfer start must expose the same `job_id` used by official `send_files()`.
 
+> 2026-06-14 UI-route note: if the app has both a direct bridge function and a generic option helper, check which one the UI actually calls. `switch-sides` is routed through `apply_session_option()` by the RemoteControl menu and must call official `Session::switch_sides()`.
+
 > 2026-06-14 release note: commit `38c837cee0bb28aee795c0fc3895044f1440f96a` was published by run `27483922931` as `core-71`; asset size `131,297,004` bytes, SHA256 `C750A785297AA22A2518B158BF334A1B1415C4E0739E01D0856C8BB5D450E15C`. Build the core from the real `%VSCODE_ROOT%\13_librustdesk_core` path, not from the app project's junction.
 
 ## 文档列表

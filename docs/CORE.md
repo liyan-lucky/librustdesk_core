@@ -19,7 +19,8 @@
   - `Native Core`
 - 当前核心已经接入真实 RustDesk 会话路径，不能再按旧文档理解为“真实网络未实现”。
 - 2026-06-14 源码更新：`session_open_terminal/session_send_terminal_input/session_resize_terminal/session_close_terminal` 已从 stub 改为调用 official `Session`；`HarmonyHandler.handle_terminal_response()` 会回流 `terminal-response`、`terminal-output`、`terminal-closed` 事件，终端 data 使用 base64；`pull_audio_frames_json()` 空队列返回 `[]`；`cpp/rustdesk_bridge_loader.cpp` 的 `SendChatMessage`/`SessionSendChat` 已兼容四参读 `args[2]`。commit `38c837cee0bb28aee795c0fc3895044f1440f96a` 已由 GitHub Actions run `27483922931` 发布为 `core-71`。
-- 2026-06-14 源码更新：文件传输不只要求 NAPI/C ABI 名称对齐，还必须让 `HarmonyHandler` 回流 app 监听的事件。`job-error`、`job-done`、`job-progress`、`folder-files`、`create-remote-dir`、`delete-remote-path`、`file-transfer-start` 等事件已接入；本地 release 构建通过，产物 `128,993,620` bytes，SHA256 `796702CDD4CB4AEB079662788002C27C39E9CB25EFB8200A9C7C91C67D8D3B51`，等待 GitHub Actions 发布后再更新当前可下载核心信息。
+- 2026-06-14 源码更新：文件传输不只要求 NAPI/C ABI 名称对齐，还必须让 `HarmonyHandler` 回流 app 监听的事件。`job-error`、`job-done`、`job-progress`、`folder-files`、`create-remote-dir`、`delete-remote-path`、`file-transfer-start` 等事件已接入；本地 release 构建通过，产物 `128,994,138` bytes，SHA256 `24F7729894862CD9ACBC44266C03563CDD8C9E2CC1AC81D0827A22E89C7A181F`，等待 GitHub Actions 发布后再更新当前可下载核心信息。
+- 2026-06-14 源码更新：`apply_session_option("switch-sides", "Y")` 已路由到 official `Session::switch_sides()`，避免 app 菜单已有 direct API 但实际 UI 路径仍落到 unsupported option 分支。
 
 ## 架构总览
 
@@ -82,6 +83,7 @@ RustDesk Server / Peer
   - 文件传输回调不能留空：`job_error/job_done/job_progress/update_folder_files/confirm_delete_files/override_file_confirm` 必须通过 `queue_event()` 发出 app 监听的事件名，其中 `update_folder_files()` 至少发 `folder-files`，同时保留 `update-folder-files` 便于后续 UI 扩展。
   - `session_send_files()` 必须复用同一个 `job_id` 调 official `send_files()` 并发 `file-transfer-start`，否则 ArkTS 侧无法把后续 `job-progress/job-done/job-error` 和任务对应起来。
   - `session_create_dir()` 和 `delete_remote_path()` 成功路径必须分别发 `create-remote-dir`、`delete-remote-path`，不能发泛化的 `file-transfer`。
+  - `apply_session_option()` 中 app 菜单会走到的命令 key 必须实际调用 official `Session`；`switch-sides` 不能因为已有 `session_switch_sides()` direct API 就在 option 路径返回 unsupported。
   - `pull_audio_frames_json()` 没有帧时必须返回 `[]`，不能返回 `{}`。
 - OHOS platform stubs 必须避免依赖桌面 Linux/Windows API。
 - ArkTS 输入必须按官方 RustDesk mouse mask 编码：

@@ -27,7 +27,8 @@
 
 - For every app-visible workflow, audit both call direction and callback/event direction. A wrapper existing in `NativeRustDeskBridge.ts` is not proof the feature is complete.
 - Event names must match the app listener contract exactly; do not hide distinct operations behind a generic event if ArkTS routes by event kind.
-- Local validation for this fix before push: `scripts\build_native_bridge.ps1 -Profile release` from the real core path passed; produced `librustdesk_core.a` size `128,993,620` bytes, SHA256 `796702CDD4CB4AEB079662788002C27C39E9CB25EFB8200A9C7C91C67D8D3B51`.
+- When the app has both a direct session function and a generic option helper, audit the UI's actual path. The RemoteControl "Switch Sides" menu uses `applySessionOption('switch-sides', 'Y')`, so the core option route must call `Session::switch_sides()` even though `session_switch_sides()` also exists.
+- Local validation for this fix before push: `scripts\build_native_bridge.ps1 -Profile release` from the real core path passed; produced `librustdesk_core.a` size `128,994,138` bytes, SHA256 `24F7729894862CD9ACBC44266C03563CDD8C9E2CC1AC81D0827A22E89C7A181F`.
 
 ## 2026-06-14: Build from the real core path, not the app junction
 
