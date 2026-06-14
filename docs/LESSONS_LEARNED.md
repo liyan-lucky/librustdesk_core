@@ -2,6 +2,28 @@
 
 > 记录容易复发的构建、发布和排查问题。新增经验时优先写清楚：现象、根因、修复、以后如何避免。
 
+## 2026-06-14: Build from the real core path, not the app junction
+
+### Symptom
+
+- Running `scripts\build_native_bridge.ps1 -Profile release` from `11_Rustdesk_harmonyos\13_librustdesk_core` failed before Cargo with a missing vcpkg installed root under `11_Rustdesk_harmonyos\99_Temp\rustdesk_harmonyos_build\vcpkg\installed`.
+- The same command succeeded from the real project path `%VSCODE_ROOT%\13_librustdesk_core`.
+
+### Root cause
+
+- The app project contains `13_librustdesk_core` as an NTFS junction for source browsing.
+- The core build scripts derive workspace/build roots from the current project path. Starting from the junction makes the script infer the wrong parent and use an app-local `99_Temp`.
+
+### Fix
+
+- Always run core builds, commits, pushes, and release checks from `%VSCODE_ROOT%\13_librustdesk_core`.
+- Treat `11_Rustdesk_harmonyos\13_librustdesk_core` as a convenience link only.
+
+### Avoidance
+
+- If vcpkg, OHOS SDK, or build-cache paths unexpectedly include `11_Rustdesk_harmonyos\99_Temp`, first check the current working directory.
+- Do not document or automate core builds using the app-junction path.
+
 ## 2026-06-14: Terminal bridge and media event payloads
 
 ### Symptom
@@ -30,6 +52,7 @@
 - For any "App has UI but feature does not work" issue, verify ArkTS -> NAPI -> C ABI -> Rust bridge -> official Session -> event return path.
 - Do not put raw binary/control-byte payloads into `queue_event()` detail; encode them first.
 - Keep 13 core C++ bridge and 11 App C++ bridge in sync before publishing a new core.
+- Release validation for this fix: commit `38c837cee0bb28aee795c0fc3895044f1440f96a`, GitHub Actions run `27483922931`, release `core-71`, asset SHA256 `C750A785297AA22A2518B158BF334A1B1415C4E0739E01D0856C8BB5D450E15C`.
 
 ## 2026-06-13: libvpx RTC C++ targets and OHOS libc++ include paths
 

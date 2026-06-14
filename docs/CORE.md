@@ -18,7 +18,7 @@
   - `Native Module`
   - `Native Core`
 - 当前核心已经接入真实 RustDesk 会话路径，不能再按旧文档理解为“真实网络未实现”。
-- 2026-06-14 源码更新：`session_open_terminal/session_send_terminal_input/session_resize_terminal/session_close_terminal` 已从 stub 改为调用 official `Session`；`HarmonyHandler.handle_terminal_response()` 会回流 `terminal-response`、`terminal-output`、`terminal-closed` 事件，终端 data 使用 base64；`pull_audio_frames_json()` 空队列返回 `[]`；`cpp/rustdesk_bridge_loader.cpp` 的 `SendChatMessage`/`SessionSendChat` 已兼容四参读 `args[2]`。
+- 2026-06-14 源码更新：`session_open_terminal/session_send_terminal_input/session_resize_terminal/session_close_terminal` 已从 stub 改为调用 official `Session`；`HarmonyHandler.handle_terminal_response()` 会回流 `terminal-response`、`terminal-output`、`terminal-closed` 事件，终端 data 使用 base64；`pull_audio_frames_json()` 空队列返回 `[]`；`cpp/rustdesk_bridge_loader.cpp` 的 `SendChatMessage`/`SessionSendChat` 已兼容四参读 `args[2]`。commit `38c837cee0bb28aee795c0fc3895044f1440f96a` 已由 GitHub Actions run `27483922931` 发布为 `core-71`。
 
 ## 架构总览
 
@@ -98,25 +98,28 @@ RustDesk Server / Peer
 Native core:
 
 - 文件：`entry/src/main/libs/arm64/librustdesk_core.a`
-- Source URL: `https://github.com/liyan-lucky/librustdesk_core/releases/download/v1.4.7-ohos/librustdesk_core.a`
-- Size: `138,394,514` bytes (`131.98 MB`)
-- Build time observed: `2026-06-12 02:31`
-- FNV-1a 1MB: `11786fd9`
-- SHA256: `A200A839F2B361C512A94CE5E2A7081F442438FF62239C90CFFAD90FA98AADC8`
+- Source URL: `https://github.com/liyan-lucky/librustdesk_core/releases/latest/download/librustdesk_core.a`
+- Release: `https://github.com/liyan-lucky/librustdesk_core/releases/tag/core-71`
+- Workflow: `https://github.com/liyan-lucky/librustdesk_core/actions/runs/27483922931`
+- Commit: `38c837cee0bb28aee795c0fc3895044f1440f96a`
+- Size: `131,297,004` bytes (`125.21 MB`)
+- Build time observed: `2026-06-14 02:23`
+- FNV-1a 1MB: `81b80db2`
+- SHA256: `C750A785297AA22A2518B158BF334A1B1415C4E0739E01D0856C8BB5D450E15C`
 - 已知异常 CI release：`core-62` 由 Cargo `dev` profile 生成，产物大小为 `595,083,124` bytes (`567.52 MiB`)，不要作为 HAP 核心来源使用。
 
 HAP:
 
-- Local BuildInfo compile time: `2026-06-12 02:57`
-- Local app version: `0.13.30`
-- Local versionCode: `1000061`
+- Local BuildInfo compile time: `2026-06-14 02:24`
+- Local app version: `0.17.0`
+- Local versionCode: `1000087`
 - Bundle: `com.open.rundesk`
 - ABI: `arm64-v8a`
-- Latest online release: `https://github.com/liyan-lucky/rustdesk_harmonyos/releases/tag/harmonyos-20260612-020111`
-- Release assets: signed/unsigned HAP, signed/unsigned `.app.zip`, `manifest.json`, `SHA256SUMS.txt`
+- Latest online release: `https://github.com/liyan-lucky/rustdesk_harmonyos/releases/tag/harmonyos-20260612-065038`
+- Current release rule: HAP-only; do not generate APP, `.app.zip`, `manifest.json`, or `SHA256SUMS.txt`
 - USB target used for validation: configured by `RUSTDESK_HARMONY_USB_TARGET`; hardware IDs are not recorded in docs.
 - Wireless target used for validation: `192.168.11.100:36169`
-- Latest online validation: 2026-06-12 Linux GitHub Actions HAP/APP build and release succeeded.
+- Latest local validation: 2026-06-14 core-71 downloaded into the app project, incremental and full HAP builds passed, `verify_native_harmonyos_hap.ps1 -SkipLaunch -SkipLogs` passed, WiFi install/launch succeeded on `192.168.11.100:36169`, and hilog confirmed `coreReady= true` with app fatal/panic/signal count 0.
 - 2026-06-09 wireless validation: HAP install and launch succeeded. hilog confirmed `coreReady=true`, `adapter=official-native`, Bridge 在线查询正常，远控连接建立。
 - **1.4.7 升级已完成**: 上游源码已升级到 1.4.7，native core 在线构建发布成功，HAP/APP 在线构建发布通过。
 - **2026-06-07 修复**: (1) 无密码连接时密码输入框丢失——`RemoteControl.ets` applyBridgeState error/idle 分支优先检查 `shouldPromptForPassword`；(2) 无密码连接被访问端刚提示就结束会话——`handleTerminalBridgeEvent` 将密码检查扩展到 `session-closed`；(3) LAN 发现失效——`rendezvous_mediator_ohos.rs` start_all() 中启动 `crate::lan::start_listening()` 监听线程。
@@ -139,14 +142,14 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts\build_native_bridge.
 2. 本地或 CI 必须使用 `release` profile；Windows 默认命令 `scripts\build_native_bridge.ps1` 已默认 `release`，GitHub Actions 也必须传 `-Profile release`。
 3. 提交并推送 13 项目，触发 GitHub Actions 构建 `librustdesk_core.a`。
 4. 发布前检查 `.a` 体积，当前基准约 `132 MiB`，workflow 体积闸门为 `100,000,000` 到 `250,000,000` bytes。
-5. 发布或更新 `v1.4.7-ohos` release asset。
-6. 11 项目的 GitHub Actions 通过 `RUSTDESK_CORE_URL` 下载该 `.a`，并用 `RUSTDESK_CORE_SHA256` 校验。
+5. GitHub Actions 自动发布新的 `core-*` release，并更新 latest release asset。
+6. 11 项目的构建脚本默认通过 latest asset 下载该 `.a`；只有需要固定版本回归时才设置 `RUSTDESK_CORE_URL` 和 `RUSTDESK_CORE_SHA256`。
 
 当前 11 项目使用：
 
 ```text
-RUSTDESK_CORE_URL=https://github.com/liyan-lucky/librustdesk_core/releases/download/v1.4.7-ohos/librustdesk_core.a
-RUSTDESK_CORE_SHA256=A200A839F2B361C512A94CE5E2A7081F442438FF62239C90CFFAD90FA98AADC8
+RUSTDESK_CORE_URL=https://github.com/liyan-lucky/librustdesk_core/releases/latest/download/librustdesk_core.a
+RUSTDESK_CORE_SHA256=
 ```
 
 下载后放入：
@@ -192,12 +195,12 @@ skip_package_verify: true
 publish_release: true
 ```
 
-当前 workflow 固定构建 `both`，会生成 HAP 和 APP。发布时 HAP 直接上传，APP 先压缩为 `.app.zip` 再上传，因为 GitHub Release 对直接 `.app` 资产处理不稳定。默认下载的线上依赖为：
+当前 App workflow 固定为 HAP-only，不再生成 APP、`.app.zip`、`manifest.json` 或 `SHA256SUMS.txt`。默认下载的线上依赖为：
 
 ```text
 HARMONYOS_SDK_URL=https://github.com/liyan-lucky/rustdesk_harmonyos/releases/download/harmonyos-sdk-full/harmonyos-sdk-full.zip
 HARMONYOS_HVIGOR_URL=https://github.com/liyan-lucky/rustdesk_harmonyos/releases/download/harmonyos-hvigor-full/harmonyos-hvigor-full.zip
-RUSTDESK_CORE_URL=https://github.com/liyan-lucky/librustdesk_core/releases/download/v1.4.7-ohos/librustdesk_core.a
+RUSTDESK_CORE_URL=https://github.com/liyan-lucky/librustdesk_core/releases/latest/download/librustdesk_core.a
 ```
 
 SDK 包必须包含 `openharmony/previewer/common/bin/libcjson.so`、`openharmony/previewer/common/bin/libsec_shared.so` 和 `openharmony/ets/build-tools/ets-loader/bin/ark/build/bin/libsec_shared.so`；workflow 会显式检查这些文件并把对应目录加入 `LD_LIBRARY_PATH`。
@@ -465,7 +468,7 @@ cd $VSCODE_ROOT_LINUX/11_Rustdesk_harmonyos/scripts
 - The nested historical copy `rustdesk-master/src/harmony_bridge/harmony_bridge/core.rs` was updated the same way to avoid future accidental reuse.
 - Windows native build verification exposed a script issue: the resolved OHOS SDK must be written back to `RUSTDESK_HARMONY_HOST_SDK`/`OHOS_SDK_HOME` before MSYS builds libsodium, otherwise `aarch64-unknown-linux-ohos-clang.cmd` reports `OHOS SDK not found`.
 
-## 2026-06-12 verified current core
+## 2026-06-12 verified historical core
 
 - Upstream compatibility: `RustDesk 1.4.7`.
 - Native core archive: `entry/src/main/libs/arm64/librustdesk_core.a`.
