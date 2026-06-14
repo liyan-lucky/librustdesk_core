@@ -122,15 +122,18 @@ pub extern "C" fn rustdesk_bridge_main_start_service(
     server: *const c_char,
     relay_server: *const c_char,
     api_server: *const c_char,
+    key: *const c_char,
 ) -> *const c_char {
     let server = read_c_string(server);
     let relay_server = read_c_string(relay_server);
     let api_server = read_c_string(api_server);
+    let key = read_c_string(key);
     to_owned_c_string(rustdesk_core::harmony_bridge::main_start_service(
         enabled != 0,
         &server,
         &relay_server,
         &api_server,
+        &key,
     ))
 }
 
@@ -277,18 +280,21 @@ pub extern "C" fn rustdesk_bridge_session_start(
     server: *const c_char,
     relay_server: *const c_char,
     api_server: *const c_char,
+    key: *const c_char,
 ) {
     let peer_id = read_c_string(peer_id);
     let password = read_c_string(password);
     let server = read_c_string(server);
     let relay_server = read_c_string(relay_server);
     let api_server = read_c_string(api_server);
+    let key = read_c_string(key);
     rustdesk_core::harmony_bridge::session_start(
         &peer_id,
         &password,
         &server,
         &relay_server,
         &api_server,
+        &key,
     );
 }
 

@@ -242,8 +242,9 @@ pub fn set_incoming_service_enabled(
     server: &str,
     relay_server: &str,
     api_server: &str,
+    key: &str,
 ) -> String {
-    apply_server_options(server, relay_server, api_server);
+    apply_server_options(server, relay_server, api_server, key);
 
     if enabled {
         config::Config::set_option("stop-service".to_owned(), "Y".to_owned());
@@ -513,9 +514,10 @@ pub fn connect_to_peer(
     server: &str,
     relay_server: &str,
     api_server: &str,
+    key: &str,
 ) {
     *latest_video_frame().lock().unwrap() = None;
-    apply_server_options(server, relay_server, api_server);
+    apply_server_options(server, relay_server, api_server, key);
 
     update_connect_state(
         "connecting",
@@ -558,19 +560,14 @@ pub fn connect_to_peer(
     });
 }
 
-fn apply_server_options(server: &str, relay_server: &str, api_server: &str) {
-    if !server.trim().is_empty() {
-        config::Config::set_option(
-            "custom-rendezvous-server".to_owned(),
-            server.trim().to_owned(),
-        );
-    }
-    if !relay_server.trim().is_empty() {
-        config::Config::set_option("relay-server".to_owned(), relay_server.trim().to_owned());
-    }
-    if !api_server.trim().is_empty() {
-        config::Config::set_option("api-server".to_owned(), api_server.trim().to_owned());
-    }
+fn apply_server_options(server: &str, relay_server: &str, api_server: &str, key: &str) {
+    config::Config::set_option(
+        "custom-rendezvous-server".to_owned(),
+        server.trim().to_owned(),
+    );
+    config::Config::set_option("relay-server".to_owned(), relay_server.trim().to_owned());
+    config::Config::set_option("api-server".to_owned(), api_server.trim().to_owned());
+    config::Config::set_option("key".to_owned(), key.trim().to_owned());
 }
 
 /// Performs account authentication with the given parameters.

@@ -340,12 +340,12 @@ napi_value HarmonyNextRgba(napi_env env, napi_callback_info info) {
 }
 
 napi_value ConnectToPeer(napi_env env, napi_callback_info info) {
-  size_t argc = 5;
-  napi_value args[5] = {nullptr};
+  size_t argc = 6;
+  napi_value args[6] = {nullptr};
   napi_get_cb_info(env, info, &argc, args, nullptr, nullptr);
-  std::string values[5];
-  for (size_t i = 0; i < argc && i < 5; ++i) ReadUtf8String(env, args[i], &values[i]);
-  rustdesk_bridge_session_start(values[0].c_str(), values[1].c_str(), values[2].c_str(), values[3].c_str(), values[4].c_str());
+  std::string values[6];
+  for (size_t i = 0; i < argc && i < 6; ++i) ReadUtf8String(env, args[i], &values[i]);
+  rustdesk_bridge_session_start(values[0].c_str(), values[1].c_str(), values[2].c_str(), values[3].c_str(), values[4].c_str(), values[5].c_str());
   napi_value undefined = nullptr;
   napi_get_undefined(env, &undefined);
   return undefined;
@@ -432,14 +432,14 @@ napi_value SubmitSessionPassword(napi_env env, napi_callback_info info) {
 }
 
 napi_value SetIncomingServiceEnabled(napi_env env, napi_callback_info info) {
-  size_t argc = 4;
-  napi_value args[4] = {nullptr};
+  size_t argc = 5;
+  napi_value args[5] = {nullptr};
   napi_get_cb_info(env, info, &argc, args, nullptr, nullptr);
   bool enabled = false;
   if (argc > 0) napi_get_value_bool(env, args[0], &enabled);
-  std::string values[3];
-  for (size_t i = 1; i < argc && i < 4; ++i) ReadUtf8String(env, args[i], &values[i - 1]);
-  const char *snapshot = rustdesk_bridge_main_start_service(enabled ? 1 : 0, values[0].c_str(), values[1].c_str(), values[2].c_str());
+  std::string values[4];
+  for (size_t i = 1; i < argc && i < 5; ++i) ReadUtf8String(env, args[i], &values[i - 1]);
+  const char *snapshot = rustdesk_bridge_main_start_service(enabled ? 1 : 0, values[0].c_str(), values[1].c_str(), values[2].c_str(), values[3].c_str());
   return MakeString(env, CopyOwnedString(snapshot));
 }
 
@@ -814,8 +814,8 @@ napi_value GetLatestVideoFrameMetadataJson(napi_env env, napi_callback_info info
 }
 
 napi_value MainStartService(napi_env env, napi_callback_info info) {
-  size_t argc = 4;
-  napi_value args[4] = {nullptr};
+  size_t argc = 5;
+  napi_value args[5] = {nullptr};
   napi_get_cb_info(env, info, &argc, args, nullptr, nullptr);
   bool enabled = false;
   if (argc > 0) napi_get_value_bool(env, args[0], &enabled);
@@ -825,7 +825,9 @@ napi_value MainStartService(napi_env env, napi_callback_info info) {
   if (argc > 2) ReadUtf8String(env, args[2], &relay_server);
   std::string api_server;
   if (argc > 3) ReadUtf8String(env, args[3], &api_server);
-  return MakeString(env, CopyOwnedText(rustdesk_bridge_main_start_service(enabled ? 1 : 0, server.c_str(), relay_server.c_str(), api_server.c_str())));
+  std::string key;
+  if (argc > 4) ReadUtf8String(env, args[4], &key);
+  return MakeString(env, CopyOwnedText(rustdesk_bridge_main_start_service(enabled ? 1 : 0, server.c_str(), relay_server.c_str(), api_server.c_str(), key.c_str())));
 }
 
 napi_value SessionSendMouse(napi_env env, napi_callback_info info) {
@@ -869,8 +871,8 @@ napi_value SessionSendChat(napi_env env, napi_callback_info info) {
 }
 
 napi_value SessionStart(napi_env env, napi_callback_info info) {
-  size_t argc = 5;
-  napi_value args[5] = {nullptr};
+  size_t argc = 6;
+  napi_value args[6] = {nullptr};
   napi_get_cb_info(env, info, &argc, args, nullptr, nullptr);
   std::string peer_id;
   if (argc > 0) ReadUtf8String(env, args[0], &peer_id);
@@ -882,7 +884,9 @@ napi_value SessionStart(napi_env env, napi_callback_info info) {
   if (argc > 3) ReadUtf8String(env, args[3], &relay_server);
   std::string api_server;
   if (argc > 4) ReadUtf8String(env, args[4], &api_server);
-  rustdesk_bridge_session_start(peer_id.c_str(), password.c_str(), server.c_str(), relay_server.c_str(), api_server.c_str());
+  std::string key;
+  if (argc > 5) ReadUtf8String(env, args[5], &key);
+  rustdesk_bridge_session_start(peer_id.c_str(), password.c_str(), server.c_str(), relay_server.c_str(), api_server.c_str(), key.c_str());
   napi_value undefined = nullptr;
   napi_get_undefined(env, &undefined);
   return undefined;
