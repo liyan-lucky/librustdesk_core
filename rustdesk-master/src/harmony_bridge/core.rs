@@ -766,33 +766,101 @@ impl InvokeUiSession for HarmonyHandler {
         queue_event("fingerprint", &fingerprint, &get_active_peer_id());
     }
 
-    fn job_error(&self, _id: i32, _err: String, _file_num: i32) {}
-    fn job_done(&self, _id: i32, _file_num: i32) {}
-    fn job_progress(&self, _id: i32, _file_num: i32, _speed: f64, _finished_size: f64) {}
-    fn clear_all_jobs(&self) {}
+    fn job_error(&self, id: i32, err: String, file_num: i32) {
+        queue_event(
+            "job-error",
+            &json!({"id":id,"error":err,"file_num":file_num}).to_string(),
+            &get_active_peer_id(),
+        );
+    }
+    fn job_done(&self, id: i32, file_num: i32) {
+        queue_event(
+            "job-done",
+            &json!({"id":id,"file_num":file_num}).to_string(),
+            &get_active_peer_id(),
+        );
+    }
+    fn job_progress(&self, id: i32, file_num: i32, speed: f64, finished_size: f64) {
+        queue_event(
+            "job-progress",
+            &json!({
+                "id":id,
+                "file_num":file_num,
+                "speed":speed,
+                "finished_size":finished_size
+            })
+            .to_string(),
+            &get_active_peer_id(),
+        );
+    }
+    fn clear_all_jobs(&self) {
+        queue_event("clear-all-jobs", "{}", &get_active_peer_id());
+    }
     fn new_message(&self, msg: String) {
         queue_event("chat-message", &msg, &get_active_peer_id());
     }
-    fn update_transfer_list(&self) {}
-    fn load_last_job(&self, _cnt: i32, _job_json: &str, _auto_start: bool) {}
+    fn update_transfer_list(&self) {
+        queue_event("update-transfer-list", "{}", &get_active_peer_id());
+    }
+    fn load_last_job(&self, cnt: i32, job_json: &str, auto_start: bool) {
+        queue_event(
+            "load-last-job",
+            &json!({"cnt":cnt,"job":job_json,"auto_start":auto_start}).to_string(),
+            &get_active_peer_id(),
+        );
+    }
     fn update_folder_files(
         &self,
-        _id: i32,
-        _entries: &Vec<FileEntry>,
-        _path: String,
-        _is_local: bool,
-        _only_count: bool,
+        id: i32,
+        entries: &Vec<FileEntry>,
+        path: String,
+        is_local: bool,
+        only_count: bool,
     ) {
+        let detail = if only_count {
+            let total_size: u64 = entries.iter().map(|entry| entry.size).sum();
+            json!({
+                "id":id,
+                "path":path,
+                "is_local":is_local,
+                "only_count":only_count,
+                "count":entries.len(),
+                "total_size":total_size
+            })
+            .to_string()
+        } else {
+            crate::common::make_fd_to_json(id, path, entries)
+        };
+        queue_event("folder-files", &detail, &get_active_peer_id());
+        queue_event("update-folder-files", &detail, &get_active_peer_id());
     }
-    fn confirm_delete_files(&self, _id: i32, _i: i32, _name: String) {}
+    fn confirm_delete_files(&self, id: i32, i: i32, name: String) {
+        queue_event(
+            "confirm-delete-files",
+            &json!({"id":id,"index":i,"name":name}).to_string(),
+            &get_active_peer_id(),
+        );
+    }
     fn override_file_confirm(
         &self,
-        _id: i32,
-        _file_num: i32,
-        _to: String,
-        _is_upload: bool,
-        _is_identical: bool,
+        id: i32,
+        file_num: i32,
+        to: String,
+        is_upload: bool,
+        is_identical: bool,
     ) {
+        queue_event(
+            "override-file-confirm",
+            &json!({
+                "id":id,
+                "file_num":file_num,
+                "to":to,
+                "is_upload":is_upload,
+                "is_identical":is_identical
+            })
+            .to_string(),
+            &get_active_peer_id(),
+        );
     }
     fn update_block_input_state(&self, _on: bool) {}
 
@@ -1293,7 +1361,7 @@ pub fn session_create_dir(path: &str) -> bool {
     };
     session.create_dir(next_bridge_job_id(), normalized.to_owned(), true);
     queue_event(
-        "file-transfer",
+        "create-remote-dir",
         &json!({"action":"create-dir","path":normalized}).to_string(),
         &get_active_peer_id(),
     );
@@ -1327,7 +1395,7 @@ pub fn delete_remote_path(path: &str, is_directory: bool) -> bool {
         session.remove_file(job_id, normalized.to_owned(), 0, true);
     }
     queue_event(
-        "file-transfer",
+        "delete-remote-path",
         &json!({"action":"delete","path":normalized,"isDirectory":is_directory}).to_string(),
         &get_active_peer_id(),
     );
@@ -1355,8 +1423,9 @@ pub fn session_send_files(path: &str, to: &str, is_remote: bool) -> bool {
         );
         return false;
     };
+    let job_id = next_bridge_job_id();
     session.send_files(
-        next_bridge_job_id(),
+        job_id,
         FileType::File as i32,
         normalized_path.to_owned(),
         normalized_to.to_owned(),
@@ -1365,8 +1434,14 @@ pub fn session_send_files(path: &str, to: &str, is_remote: bool) -> bool {
         is_remote,
     );
     queue_event(
-        "file-transfer",
-        &json!({"action":"start","path":normalized_path,"to":normalized_to,"isRemote":is_remote})
+        "file-transfer-start",
+        &json!({
+            "id":job_id,
+            "action":"start",
+            "path":normalized_path,
+            "to":normalized_to,
+            "is_remote":is_remote
+        })
             .to_string(),
         &get_active_peer_id(),
     );

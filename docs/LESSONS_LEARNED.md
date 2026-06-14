@@ -2,6 +2,33 @@
 
 > 记录容易复发的构建、发布和排查问题。新增经验时优先写清楚：现象、根因、修复、以后如何避免。
 
+## 2026-06-14: File transfer needs callback-event parity, not just API parity
+
+### Symptom
+
+- The Harmony app had `FileTransferService.ets`, NAPI wrappers, and C ABI functions for reading remote directories, creating directories, deleting paths, and starting transfers.
+- The app listened for `folder-files`, `file-transfer-start`, `job-progress`, `job-done`, `job-error`, `create-remote-dir`, and `delete-remote-path`, but the core did not emit most of those events.
+- `session_send_files()` called official `send_files()` with a generated job id, then emitted a generic event without that id, so the app could not associate progress with the task.
+
+### Root cause
+
+- Interface-name parity was checked, but `InvokeUiSession` file-transfer callbacks in the Harmony handler were still empty.
+- Create/delete/start paths emitted generic `file-transfer` events while the ArkTS side had already split them into action-specific events.
+- File-transfer is a bidirectional workflow: start calls must be paired with job callbacks and directory listing callbacks.
+
+### Fix
+
+- `HarmonyHandler` now emits `job-error`, `job-done`, `job-progress`, `clear-all-jobs`, `update-transfer-list`, `load-last-job`, `folder-files`, `update-folder-files`, `confirm-delete-files`, and `override-file-confirm`.
+- `update_folder_files()` uses `crate::common::make_fd_to_json(...)` for full directory entries and count-only JSON for `only_count`.
+- `session_send_files()` stores one `job_id`, passes it to official `send_files()`, and emits `file-transfer-start` with the same id.
+- `session_create_dir()` and `delete_remote_path()` emit `create-remote-dir` and `delete-remote-path` respectively.
+
+### Avoidance
+
+- For every app-visible workflow, audit both call direction and callback/event direction. A wrapper existing in `NativeRustDeskBridge.ts` is not proof the feature is complete.
+- Event names must match the app listener contract exactly; do not hide distinct operations behind a generic event if ArkTS routes by event kind.
+- Local validation for this fix before push: `scripts\build_native_bridge.ps1 -Profile release` from the real core path passed; produced `librustdesk_core.a` size `128,993,620` bytes, SHA256 `796702CDD4CB4AEB079662788002C27C39E9CB25EFB8200A9C7C91C67D8D3B51`.
+
 ## 2026-06-14: Build from the real core path, not the app junction
 
 ### Symptom
