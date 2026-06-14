@@ -2,6 +2,31 @@
 
 > 记录容易复发的构建、发布和排查问题。新增经验时优先写清楚：现象、根因、修复、以后如何避免。
 
+## 2026-06-15: C++ ABI headers must match Rust extern signatures exactly
+
+### Symptom
+
+- The app-side `entry/src/main/cpp` copy already called `rustdesk_bridge_session_send_chat(peer_id, message_type, content, timestamp)`.
+- The source-of-truth core project `cpp/rustdesk_bridge_abi.h` still declared `rustdesk_bridge_session_send_chat(const char *content)`, and `cpp/rustdesk_bridge_loader.cpp` still called it with only one argument.
+- Rust `native_rust_core/src/bridge_api.rs` exports the function with four arguments, so any future app sync from core would reintroduce chat argument mismatch.
+
+### Root cause
+
+- The earlier fix was applied to the app copy but not fully synchronized back to the core project.
+- C/C++ will not protect this path if the local declaration is stale; the loader can compile against the wrong declaration and pass the wrong registers to the Rust ABI.
+
+### Fix
+
+- Updated `cpp/rustdesk_bridge_abi.h` to the four-argument signature: `peer_id`, `message_type`, `content`, `timestamp`.
+- Updated `SendChatMessage` and `SessionSendChat` to read `args[2]` as content for four-argument calls, pass all four values to Rust, and retain `args[0]` fallback for legacy one-argument calls.
+- Local release build from the real core path passed. Produced `librustdesk_core.a` size `128,882,788` bytes, SHA256 `D0654CC920619957D99E640B7E18969135D224A0F562E26188241B41F47BC45A`.
+- 中文发布说明：本轮核心更新用于防止聊天发送 ABI 再次错位；预计发布标签 `core-77`，待 GitHub Actions 完成后回填实际 run、tag、asset 和 SHA256。
+
+### Avoidance
+
+- When Rust `#[no_mangle] extern "C"` signatures change, audit all three layers together: `bridge_api.rs`, `cpp/rustdesk_bridge_abi.h`, and `cpp/rustdesk_bridge_loader.cpp`.
+- Also compare the 13 core `cpp/` source and the 11 app `entry/src/main/cpp/` copy before publishing, because the app copy can be newer than the core source after emergency fixes.
+
 ## 2026-06-14: Keep inactive Harmony source mirrors from regressing working paths
 
 ### Symptom

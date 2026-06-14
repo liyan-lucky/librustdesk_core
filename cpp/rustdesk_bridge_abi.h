@@ -67,7 +67,7 @@ const char * rustdesk_bridge_main_start_service(int enabled, const char * server
 int rustdesk_bridge_session_send_mouse(int mask, int x, int y);
 int rustdesk_bridge_session_input_key(int key_code, int is_pressed, int modifiers);
 int rustdesk_bridge_session_ctrl_alt_del(void);
-int rustdesk_bridge_session_send_chat(const char * content);
+int rustdesk_bridge_session_send_chat(const char * peer_id, const char * message_type, const char * content, long long timestamp);
 void rustdesk_bridge_session_start(const char * peer_id, const char * password, const char * server, const char * relay_server, const char * api_server, const char * key);
 void rustdesk_bridge_main_account_auth(const char * op, int remember_me, const char * server, const char * relay_server, const char * api_server);
 void rustdesk_bridge_main_account_auth_cancel(void);

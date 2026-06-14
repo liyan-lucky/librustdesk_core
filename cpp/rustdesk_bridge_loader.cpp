@@ -526,10 +526,17 @@ napi_value SendChatMessage(napi_env env, napi_callback_info info) {
   size_t argc = 4;
   napi_value args[4] = {nullptr};
   napi_get_cb_info(env, info, &argc, args, nullptr, nullptr);
-  std::string content;
+  std::string peer_id, message_type, content;
+  int64_t timestamp = 0;
+  if (argc > 0) ReadUtf8String(env, args[0], &peer_id);
+  if (argc > 1) ReadUtf8String(env, args[1], &message_type);
   if (argc > 2) ReadUtf8String(env, args[2], &content);
-  else if (argc > 0) ReadUtf8String(env, args[0], &content);
-  return MakeBool(env, rustdesk_bridge_session_send_chat(content.c_str()) != 0);
+  else if (argc > 0 && content.empty()) ReadUtf8String(env, args[0], &content);
+  if (argc > 3) napi_get_value_int64(env, args[3], &timestamp);
+  OH_LOG_Print(LOG_APP, LOG_ERROR, LOG_DOMAIN, LOG_TAG, "SendChatMessage: argc=%{public}zu contentLen=%{public}zu content=[%{public}s]", argc, content.size(), content.c_str());
+  int ret = rustdesk_bridge_session_send_chat(peer_id.c_str(), message_type.c_str(), content.c_str(), timestamp);
+  OH_LOG_Print(LOG_APP, LOG_ERROR, LOG_DOMAIN, LOG_TAG, "SendChatMessage: ret=%{public}d", ret);
+  return MakeBool(env, ret != 0);
 }
 
 napi_value SendFileTransferRequest(napi_env env, napi_callback_info info) {
@@ -864,10 +871,17 @@ napi_value SessionSendChat(napi_env env, napi_callback_info info) {
   size_t argc = 4;
   napi_value args[4] = {nullptr};
   napi_get_cb_info(env, info, &argc, args, nullptr, nullptr);
-  std::string content;
+  std::string peer_id, message_type, content;
+  int64_t timestamp = 0;
+  if (argc > 0) ReadUtf8String(env, args[0], &peer_id);
+  if (argc > 1) ReadUtf8String(env, args[1], &message_type);
   if (argc > 2) ReadUtf8String(env, args[2], &content);
-  else if (argc > 0) ReadUtf8String(env, args[0], &content);
-  return MakeBool(env, rustdesk_bridge_session_send_chat(content.c_str()) != 0);
+  else if (argc > 0 && content.empty()) ReadUtf8String(env, args[0], &content);
+  if (argc > 3) napi_get_value_int64(env, args[3], &timestamp);
+  OH_LOG_Print(LOG_APP, LOG_ERROR, LOG_DOMAIN, LOG_TAG, "SessionSendChat: argc=%{public}zu contentLen=%{public}zu content=[%{public}s]", argc, content.size(), content.c_str());
+  int ret = rustdesk_bridge_session_send_chat(peer_id.c_str(), message_type.c_str(), content.c_str(), timestamp);
+  OH_LOG_Print(LOG_APP, LOG_ERROR, LOG_DOMAIN, LOG_TAG, "SessionSendChat: ret=%{public}d", ret);
+  return MakeBool(env, ret != 0);
 }
 
 napi_value SessionStart(napi_env env, napi_callback_info info) {

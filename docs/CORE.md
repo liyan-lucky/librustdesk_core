@@ -23,6 +23,7 @@
 - 2026-06-14 源码更新：`apply_session_option("switch-sides", "Y")` 已路由到 official `Session::switch_sides()`，避免 app 菜单已有 direct API 但实际 UI 路径仍落到 unsupported option 分支。
 - 2026-06-14 源码更新：旧副本 `rustdesk-master/src/harmony_bridge/harmony_bridge/core.rs` 的 `send_clipboard_data()` 已与 active bridge 对齐，改为构造 `Clipboard` protobuf 并通过 active `Session` 发送，避免未来从旧副本同步/生成时剪贴板退回 `false` stub。本地 release 构建通过，产物仍为 `128,994,138` bytes，SHA256 `24F7729894862CD9ACBC44266C03563CDD8C9E2CC1AC81D0827A22E89C7A181F`。
 - 2026-06-14 发布验证：commit `1b987914a2c27ace376e5af45a9c6790d84d40b4` 已由 GitHub Actions run `27486100946` 发布为 `core-74`，release asset `131,471,786` bytes，SHA256 `3755D448FBB1A583E7B5F7C3C6ADEC29D8AF0FBB7E5DD192251CD18A68C45D7C`；11 App 已下载 latest core，全量 HAP 构建/验包/无线安装通过，设备锁屏仍阻断启动运行态。
+- 2026-06-15 源码更新（中文说明，预计发布标签 `core-77`）：核心 C++ 源项目 `cpp/rustdesk_bridge_abi.h` 和 `cpp/rustdesk_bridge_loader.cpp` 已把 `rustdesk_bridge_session_send_chat` 从旧一参调用同步为 Rust ABI 的四参调用（`peer_id`、`message_type`、`content`、`timestamp`），并保留旧一参 fallback；否则后续从核心同步 `cpp/` 会覆盖 11 App 内已修复的聊天发送路径。本地 release 构建通过，产物 `128,882,788` bytes，SHA256 `D0654CC920619957D99E640B7E18969135D224A0F562E26188241B41F47BC45A`。待线上 Actions 完成后回填实际 run、release tag 和 asset 信息。
 
 ## 架构总览
 
@@ -88,6 +89,7 @@ RustDesk Server / Peer
   - `apply_session_option()` 中 app 菜单会走到的命令 key 必须实际调用 official `Session`；`switch-sides` 不能因为已有 `session_switch_sides()` direct API 就在 option 路径返回 unsupported。
   - 旧副本 `harmony_bridge/harmony_bridge/core.rs` 中已接通的功能也要同步；`send_clipboard_data()` 不能保持 `false` stub。
   - `pull_audio_frames_json()` 没有帧时必须返回 `[]`，不能返回 `{}`。
+  - `cpp/rustdesk_bridge_abi.h` 的 `rustdesk_bridge_session_send_chat` 必须与 Rust ABI 保持四参一致；`SendChatMessage`/`SessionSendChat` 读取 `args[2]` 作为 content，并将 `peer_id/message_type/timestamp` 传入 ABI。只在旧一参调用时 fallback 到 `args[0]`。
 - OHOS platform stubs 必须避免依赖桌面 Linux/Windows API。
 - ArkTS 输入必须按官方 RustDesk mouse mask 编码：
   - 低 3 bit 是 event type。

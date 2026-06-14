@@ -2,6 +2,25 @@
 
 > 本文记录每一轮连接和核心调试过程。当前结论以最新时间段为准，历史段落保留排查脉络。
 
+## 2026-06-15 核心聊天 ABI 源项目回同步
+
+### 现象
+
+- 11 App 项目的 `entry/src/main/cpp` 已经把聊天发送修成四参调用，但 13 核心项目的 `cpp/rustdesk_bridge_abi.h` 和 `cpp/rustdesk_bridge_loader.cpp` 仍是旧一参调用。
+- Rust `native_rust_core/src/bridge_api.rs` 的 `rustdesk_bridge_session_send_chat` 是四参 ABI，核心源项目不修会在下一次同步 `cpp/` 时覆盖 app 修复。
+
+### 修改
+
+- `cpp/rustdesk_bridge_abi.h`：`rustdesk_bridge_session_send_chat` 改为 `peer_id/message_type/content/timestamp` 四参。
+- `cpp/rustdesk_bridge_loader.cpp`：`SendChatMessage` 与 `SessionSendChat` 读取 `args[2]` 作为 content，透传四参；保留旧一参 fallback。
+- 中文发布说明：本轮核心修复预计发布标签 `core-77`，用于防止聊天发送 content 参数错位回归。
+
+### 验证
+
+- 从真实 `%VSCODE_ROOT%\13_librustdesk_core` 执行 `powershell -NoProfile -ExecutionPolicy Bypass -File scripts\build_native_bridge.ps1` 通过。
+- 本地产物：`entry/src/main/libs/arm64/librustdesk_core.a`，`128,882,788` bytes，SHA256 `D0654CC920619957D99E640B7E18969135D224A0F562E26188241B41F47BC45A`。
+- 待 GitHub Actions 完成后回填实际 run、release tag、线上 asset SHA256，并让 11 App 下载最新核心后重新构建安装验证。
+
 ## 2026-06-07 无密码连接密码框丢失 + 会话过早关闭 + LAN发现诊断
 
 ### 用户观察
