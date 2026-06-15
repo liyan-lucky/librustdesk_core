@@ -892,21 +892,39 @@ impl InvokeUiSession for HarmonyHandler {
     }
     fn switch_back(&self, _id: &str) {}
     fn portable_service_running(&self, _running: bool) {}
-    fn on_voice_call_started(&self) {}
+    fn on_voice_call_started(&self) {
+        queue_event("voice-call-started", "", &get_active_peer_id());
+    }
     fn on_voice_call_closed(&self, reason: &str) {
         queue_event("voice-call-closed", reason, &get_active_peer_id());
     }
-    fn on_voice_call_waiting(&self) {}
-    fn on_voice_call_incoming(&self) {}
+    fn on_voice_call_waiting(&self) {
+        queue_event("voice-call-waiting", "", &get_active_peer_id());
+    }
+    fn on_voice_call_incoming(&self) {
+        queue_event("voice-call-incoming", "", &get_active_peer_id());
+    }
     fn get_rgba(&self, _display: usize) -> *const u8 {
         std::ptr::null()
     }
     fn next_rgba(&self, _display: usize) {}
     fn set_multiple_windows_session(&self, _sessions: Vec<WindowsSession>) {}
     fn set_current_display(&self, _disp_idx: i32) {}
-    fn update_record_status(&self, _start: bool) {}
+    fn update_record_status(&self, start: bool) {
+        queue_event(
+            "record-status",
+            if start { "start=true" } else { "start=false" },
+            &get_active_peer_id(),
+        );
+    }
     fn printer_request(&self, _id: i32, _path: String) {}
-    fn handle_screenshot_resp(&self, _sid: String, _msg: String) {}
+    fn handle_screenshot_resp(&self, sid: String, msg: String) {
+        queue_event(
+            "screenshot-response",
+            &format!("sid={sid};msg={msg}"),
+            &get_active_peer_id(),
+        );
+    }
     fn handle_terminal_response(&self, response: TerminalResponse) {
         use hbb_common::message_proto::terminal_response::Union;
 
@@ -1569,34 +1587,74 @@ pub fn session_toggle_option(name: &str) {
     );
 }
 
-pub fn session_toggle_privacy_mode(impl_key: &str, on: bool) {
+pub fn session_toggle_privacy_mode(impl_key: &str, on: bool) -> bool {
     let Some(session) = active_session().lock().unwrap().as_ref().cloned() else {
-        return;
+        queue_event(
+            "session-command",
+            "failed=no-active-session; command=toggle-privacy-mode",
+            "",
+        );
+        return false;
     };
     session.toggle_privacy_mode(impl_key.to_owned(), on);
+    queue_event(
+        "session-command",
+        &format!("command=toggle-privacy-mode;on={on}"),
+        &get_active_peer_id(),
+    );
+    true
 }
 
-pub fn session_switch_display(display: c_int) {
+pub fn session_switch_display(display: c_int) -> bool {
     let Some(session) = active_session().lock().unwrap().as_ref().cloned() else {
-        return;
+        queue_event(
+            "session-command",
+            "failed=no-active-session; command=switch-display",
+            "",
+        );
+        return false;
     };
     session.switch_display(display);
+    queue_event(
+        "session-command",
+        &format!("command=switch-display;display={display}"),
+        &get_active_peer_id(),
+    );
+    true
 }
 
-pub fn session_enter_or_leave() {
+pub fn session_enter_or_leave() -> bool {
     let Some(session) = active_session().lock().unwrap().as_ref().cloned() else {
-        return;
+        queue_event(
+            "session-command",
+            "failed=no-active-session; command=enter-or-leave",
+            "",
+        );
+        return false;
     };
     let keyboard_mode = session.get_keyboard_mode();
     session.enter(keyboard_mode);
+    queue_event(
+        "session-command",
+        "command=enter-or-leave",
+        &get_active_peer_id(),
+    );
+    true
 }
 
-pub fn session_leave() {
+pub fn session_leave() -> bool {
     let Some(session) = active_session().lock().unwrap().as_ref().cloned() else {
-        return;
+        queue_event(
+            "session-command",
+            "failed=no-active-session; command=leave",
+            "",
+        );
+        return false;
     };
     let keyboard_mode = session.get_keyboard_mode();
     session.leave(keyboard_mode);
+    queue_event("session-command", "command=leave", &get_active_peer_id());
+    true
 }
 
 pub fn session_set_size(_display: usize, _width: usize, _height: usize) {
@@ -1624,9 +1682,14 @@ pub fn session_elevate_with_logon(username: &str, password: &str) {
     session.elevate_with_logon(username.to_owned(), password.to_owned());
 }
 
-pub fn session_switch_sides() {
+pub fn session_switch_sides() -> bool {
     let Some(session) = active_session().lock().unwrap().as_ref().cloned() else {
-        return;
+        queue_event(
+            "session-command",
+            "failed=no-active-session; command=switch-sides",
+            "",
+        );
+        return false;
     };
     session.switch_sides();
     queue_event(
@@ -1634,6 +1697,7 @@ pub fn session_switch_sides() {
         "command=switch-sides",
         &get_active_peer_id(),
     );
+    true
 }
 
 pub fn session_take_screenshot(display: usize) -> bool {
@@ -1652,9 +1716,14 @@ pub fn session_take_screenshot(display: usize) -> bool {
     true
 }
 
-pub fn session_record_screen(start: bool) {
+pub fn session_record_screen(start: bool) -> bool {
     let Some(session) = active_session().lock().unwrap().as_ref().cloned() else {
-        return;
+        queue_event(
+            "session-command",
+            "failed=no-active-session; command=record-screen",
+            "",
+        );
+        return false;
     };
     session.record_screen(start);
     queue_event(
@@ -1662,6 +1731,7 @@ pub fn session_record_screen(start: bool) {
         &format!("command=record-screen;start={start}"),
         &get_active_peer_id(),
     );
+    true
 }
 
 pub fn session_get_is_recording() -> bool {
@@ -1671,18 +1741,40 @@ pub fn session_get_is_recording() -> bool {
     session.is_recording()
 }
 
-pub fn session_request_voice_call() {
+pub fn session_request_voice_call() -> bool {
     let Some(session) = active_session().lock().unwrap().as_ref().cloned() else {
-        return;
+        queue_event(
+            "session-command",
+            "failed=no-active-session; command=request-voice-call",
+            "",
+        );
+        return false;
     };
     session.request_voice_call();
+    queue_event(
+        "session-command",
+        "command=request-voice-call",
+        &get_active_peer_id(),
+    );
+    true
 }
 
-pub fn session_close_voice_call() {
+pub fn session_close_voice_call() -> bool {
     let Some(session) = active_session().lock().unwrap().as_ref().cloned() else {
-        return;
+        queue_event(
+            "session-command",
+            "failed=no-active-session; command=close-voice-call",
+            "",
+        );
+        return false;
     };
     session.close_voice_call();
+    queue_event(
+        "session-command",
+        "command=close-voice-call",
+        &get_active_peer_id(),
+    );
+    true
 }
 
 pub fn session_add_port_forward(local_port: c_int, remote_host: &str, remote_port: c_int) {

@@ -865,21 +865,39 @@ impl InvokeUiSession for HarmonyHandler {
     }
     fn switch_back(&self, _id: &str) {}
     fn portable_service_running(&self, _running: bool) {}
-    fn on_voice_call_started(&self) {}
+    fn on_voice_call_started(&self) {
+        queue_event("voice-call-started", "", &get_active_peer_id());
+    }
     fn on_voice_call_closed(&self, reason: &str) {
         queue_event("voice-call-closed", reason, &get_active_peer_id());
     }
-    fn on_voice_call_waiting(&self) {}
-    fn on_voice_call_incoming(&self) {}
+    fn on_voice_call_waiting(&self) {
+        queue_event("voice-call-waiting", "", &get_active_peer_id());
+    }
+    fn on_voice_call_incoming(&self) {
+        queue_event("voice-call-incoming", "", &get_active_peer_id());
+    }
     fn get_rgba(&self, _display: usize) -> *const u8 {
         std::ptr::null()
     }
     fn next_rgba(&self, _display: usize) {}
     fn set_multiple_windows_session(&self, _sessions: Vec<WindowsSession>) {}
     fn set_current_display(&self, _disp_idx: i32) {}
-    fn update_record_status(&self, _start: bool) {}
+    fn update_record_status(&self, start: bool) {
+        queue_event(
+            "record-status",
+            if start { "start=true" } else { "start=false" },
+            &get_active_peer_id(),
+        );
+    }
     fn printer_request(&self, _id: i32, _path: String) {}
-    fn handle_screenshot_resp(&self, _sid: String, _msg: String) {}
+    fn handle_screenshot_resp(&self, sid: String, msg: String) {
+        queue_event(
+            "screenshot-response",
+            &format!("sid={sid};msg={msg}"),
+            &get_active_peer_id(),
+        );
+    }
     fn handle_terminal_response(&self, response: TerminalResponse) {
         use hbb_common::message_proto::terminal_response::Union;
 

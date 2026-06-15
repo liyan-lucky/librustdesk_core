@@ -638,24 +638,43 @@ pub extern "C" fn rustdesk_bridge_session_toggle_option(name: *const c_char) {
 }
 
 #[no_mangle]
-pub extern "C" fn rustdesk_bridge_session_toggle_privacy_mode(impl_key: *const c_char, on: c_int) {
+pub extern "C" fn rustdesk_bridge_session_toggle_privacy_mode(
+    impl_key: *const c_char,
+    on: c_int,
+) -> c_int {
     let impl_key = read_c_string(impl_key);
-    rustdesk_core::harmony_bridge::session_toggle_privacy_mode(&impl_key, on != 0);
+    if rustdesk_core::harmony_bridge::session_toggle_privacy_mode(&impl_key, on != 0) {
+        1
+    } else {
+        0
+    }
 }
 
 #[no_mangle]
-pub extern "C" fn rustdesk_bridge_session_switch_display(display: c_int) {
-    rustdesk_core::harmony_bridge::session_switch_display(display);
+pub extern "C" fn rustdesk_bridge_session_switch_display(display: c_int) -> c_int {
+    if rustdesk_core::harmony_bridge::session_switch_display(display) {
+        1
+    } else {
+        0
+    }
 }
 
 #[no_mangle]
-pub extern "C" fn rustdesk_bridge_session_enter_or_leave() {
-    rustdesk_core::harmony_bridge::session_enter_or_leave();
+pub extern "C" fn rustdesk_bridge_session_enter_or_leave() -> c_int {
+    if rustdesk_core::harmony_bridge::session_enter_or_leave() {
+        1
+    } else {
+        0
+    }
 }
 
 #[no_mangle]
-pub extern "C" fn rustdesk_bridge_session_leave() {
-    rustdesk_core::harmony_bridge::session_leave();
+pub extern "C" fn rustdesk_bridge_session_leave() -> c_int {
+    if rustdesk_core::harmony_bridge::session_leave() {
+        1
+    } else {
+        0
+    }
 }
 
 #[no_mangle]
@@ -688,8 +707,12 @@ pub extern "C" fn rustdesk_bridge_session_elevate_with_logon(
 }
 
 #[no_mangle]
-pub extern "C" fn rustdesk_bridge_session_switch_sides() {
-    rustdesk_core::harmony_bridge::session_switch_sides();
+pub extern "C" fn rustdesk_bridge_session_switch_sides() -> c_int {
+    if rustdesk_core::harmony_bridge::session_switch_sides() {
+        1
+    } else {
+        0
+    }
 }
 
 #[no_mangle]
@@ -702,8 +725,12 @@ pub extern "C" fn rustdesk_bridge_session_take_screenshot(display: usize) -> c_i
 }
 
 #[no_mangle]
-pub extern "C" fn rustdesk_bridge_session_record_screen(start: c_int) {
-    rustdesk_core::harmony_bridge::session_record_screen(start != 0);
+pub extern "C" fn rustdesk_bridge_session_record_screen(start: c_int) -> c_int {
+    if rustdesk_core::harmony_bridge::session_record_screen(start != 0) {
+        1
+    } else {
+        0
+    }
 }
 
 #[no_mangle]
@@ -716,13 +743,21 @@ pub extern "C" fn rustdesk_bridge_session_get_is_recording() -> c_int {
 }
 
 #[no_mangle]
-pub extern "C" fn rustdesk_bridge_session_request_voice_call() {
-    rustdesk_core::harmony_bridge::session_request_voice_call();
+pub extern "C" fn rustdesk_bridge_session_request_voice_call() -> c_int {
+    if rustdesk_core::harmony_bridge::session_request_voice_call() {
+        1
+    } else {
+        0
+    }
 }
 
 #[no_mangle]
-pub extern "C" fn rustdesk_bridge_session_close_voice_call() {
-    rustdesk_core::harmony_bridge::session_close_voice_call();
+pub extern "C" fn rustdesk_bridge_session_close_voice_call() -> c_int {
+    if rustdesk_core::harmony_bridge::session_close_voice_call() {
+        1
+    } else {
+        0
+    }
 }
 
 #[no_mangle]

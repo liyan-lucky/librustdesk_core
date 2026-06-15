@@ -1145,10 +1145,7 @@ napi_value SessionTogglePrivacyMode(napi_env env, napi_callback_info info) {
   if (argc > 0) ReadUtf8String(env, args[0], &impl_key);
   bool on = false;
   if (argc > 1) napi_get_value_bool(env, args[1], &on);
-  rustdesk_bridge_session_toggle_privacy_mode(impl_key.c_str(), on ? 1 : 0);
-  napi_value undefined = nullptr;
-  napi_get_undefined(env, &undefined);
-  return undefined;
+  return MakeBool(env, rustdesk_bridge_session_toggle_privacy_mode(impl_key.c_str(), on ? 1 : 0) != 0);
 }
 
 napi_value SessionSwitchDisplay(napi_env env, napi_callback_info info) {
@@ -1157,24 +1154,15 @@ napi_value SessionSwitchDisplay(napi_env env, napi_callback_info info) {
   napi_get_cb_info(env, info, &argc, args, nullptr, nullptr);
   int32_t display = 0;
   if (argc > 0) napi_get_value_int32(env, args[0], &display);
-  rustdesk_bridge_session_switch_display(display);
-  napi_value undefined = nullptr;
-  napi_get_undefined(env, &undefined);
-  return undefined;
+  return MakeBool(env, rustdesk_bridge_session_switch_display(display) != 0);
 }
 
 napi_value SessionEnterOrLeave(napi_env env, napi_callback_info info) {
-  rustdesk_bridge_session_enter_or_leave();
-  napi_value undefined = nullptr;
-  napi_get_undefined(env, &undefined);
-  return undefined;
+  return MakeBool(env, rustdesk_bridge_session_enter_or_leave() != 0);
 }
 
 napi_value SessionLeave(napi_env env, napi_callback_info info) {
-  rustdesk_bridge_session_leave();
-  napi_value undefined = nullptr;
-  napi_get_undefined(env, &undefined);
-  return undefined;
+  return MakeBool(env, rustdesk_bridge_session_leave() != 0);
 }
 
 napi_value SessionSetSize(napi_env env, napi_callback_info info) {
@@ -1231,10 +1219,7 @@ napi_value SessionElevateWithLogon(napi_env env, napi_callback_info info) {
 }
 
 napi_value SessionSwitchSides(napi_env env, napi_callback_info info) {
-  rustdesk_bridge_session_switch_sides();
-  napi_value undefined = nullptr;
-  napi_get_undefined(env, &undefined);
-  return undefined;
+  return MakeBool(env, rustdesk_bridge_session_switch_sides() != 0);
 }
 
 napi_value SessionTakeScreenshot(napi_env env, napi_callback_info info) {
@@ -1252,10 +1237,7 @@ napi_value SessionRecordScreen(napi_env env, napi_callback_info info) {
   napi_get_cb_info(env, info, &argc, args, nullptr, nullptr);
   bool start = false;
   if (argc > 0) napi_get_value_bool(env, args[0], &start);
-  rustdesk_bridge_session_record_screen(start ? 1 : 0);
-  napi_value undefined = nullptr;
-  napi_get_undefined(env, &undefined);
-  return undefined;
+  return MakeBool(env, rustdesk_bridge_session_record_screen(start ? 1 : 0) != 0);
 }
 
 napi_value SessionGetIsRecording(napi_env env, napi_callback_info info) {
@@ -1263,17 +1245,11 @@ napi_value SessionGetIsRecording(napi_env env, napi_callback_info info) {
 }
 
 napi_value SessionRequestVoiceCall(napi_env env, napi_callback_info info) {
-  rustdesk_bridge_session_request_voice_call();
-  napi_value undefined = nullptr;
-  napi_get_undefined(env, &undefined);
-  return undefined;
+  return MakeBool(env, rustdesk_bridge_session_request_voice_call() != 0);
 }
 
 napi_value SessionCloseVoiceCall(napi_env env, napi_callback_info info) {
-  rustdesk_bridge_session_close_voice_call();
-  napi_value undefined = nullptr;
-  napi_get_undefined(env, &undefined);
-  return undefined;
+  return MakeBool(env, rustdesk_bridge_session_close_voice_call() != 0);
 }
 
 napi_value SessionAddPortForward(napi_env env, napi_callback_info info) {

@@ -2,6 +2,26 @@
 
 > 本文记录每一轮连接和核心调试过程。当前结论以最新时间段为准，历史段落保留排查脉络。
 
+## 2026-06-15 远控会话命令返回值和录制/语音事件回流
+
+### 现象
+
+- app 远控菜单里“切换主控端/截图/会话录制/语音聊天”已经有核心函数，但部分 UI 仍走通用 option 或本机录屏 API。
+- 核心 direct session 函数多为 void，ArkTS 无法判断没有活动会话时命令是否真正送达，容易误报“命令已发送”。
+- 会话录制状态、截图响应、语音呼叫 started/waiting/closed 没有完整事件回流，UI 状态只能靠本地猜测。
+
+### 修改
+
+- `rustdesk-master/src/harmony_bridge/core.rs`：`session_toggle_privacy_mode/session_switch_display/session_enter_or_leave/session_leave/session_switch_sides/session_record_screen/session_request_voice_call/session_close_voice_call` 改为 bool 返回；无活动 session 时发 `session-command failed=no-active-session`。
+- `native_rust_core/src/bridge_api.rs`、`cpp/rustdesk_bridge_abi.h`、`cpp/rustdesk_bridge_loader.cpp`、`cpp/types/librustdesk_bridge/index.d.ts`：同步 bool ABI 和 NAPI 返回值。
+- `HarmonyHandler`：补 `voice-call-started/voice-call-waiting/voice-call-incoming/voice-call-closed/record-status/screenshot-response` 事件，旧镜像文件同步同类回调，避免将来从镜像复制时回退。
+
+### 验证
+
+- 从真实 `%VSCODE_ROOT%\13_librustdesk_core` 执行 `powershell -NoProfile -ExecutionPolicy Bypass -File scripts\build_native_bridge.ps1` 通过。
+- 本地产物：`entry/src/main/libs/arm64/librustdesk_core.a`，`129,028,464` bytes，SHA256 `650E467B3ED67DD368A329FA25BCC024584880FB9B82902C3BE95D2852035E62`。
+- 中文发布说明：本轮核心更新用于让远控会话命令具备真实成功/失败返回值，并让录制、截图、语音呼叫状态从核心回流；推送后等待 GitHub Actions 自动发布并回填实际标签，预期下一标签为 `core-79`。
+
 ## 2026-06-15 核心聊天 ABI 源项目回同步
 
 ### 现象

@@ -2,6 +2,32 @@
 
 > 记录容易复发的构建、发布和排查问题。新增经验时优先写清楚：现象、根因、修复、以后如何避免。
 
+## 2026-06-15: Direct session functions need status returns and event parity
+
+### Symptom
+
+- RemoteControl UI had native functions for switch sides, screenshot, session recording, and voice call, but some menu actions still used generic option helpers or local Harmony screen capture.
+- Several core direct session commands returned `void`, so ArkTS could not distinguish "function exists" from "active session accepted the command".
+- Recording, screenshot response, and voice-call state callbacks were empty or incomplete, leaving UI state to local guesses.
+
+### Root cause
+
+- The audit checked API presence before checking end-to-end semantics: Rust bridge return value, C ABI declaration, C++ NAPI wrapper, ArkTS wrapper, and UI caller all have to agree.
+- Session recording is a remote-session command, not local app screen capture. Requesting `CUSTOM_SCREEN_CAPTURE` from RemoteControl created a conflict with incoming-share probing.
+
+### Fix
+
+- Converted direct session commands to bool across Rust bridge, C ABI, C++ NAPI, d.ts, and ArkTS wrappers.
+- Added `failed=no-active-session` command events when no active session exists.
+- Added event callbacks for voice-call started/waiting/incoming/closed, record-status, and screenshot-response.
+- Local release build from the real core path passed. Produced `librustdesk_core.a` size `129,028,464` bytes, SHA256 `650E467B3ED67DD368A329FA25BCC024584880FB9B82902C3BE95D2852035E62`.
+
+### Avoidance
+
+- For every core function "接入", verify both directions: UI call path into official `Session`, and official callback/event path back to ArkTS.
+- Do not call local screen capture from RemoteControl session recording. Keep local capture reserved for incoming share/probe paths only.
+- When a C ABI return type changes, update `bridge_api.rs`, `cpp/rustdesk_bridge_abi.h`, `cpp/rustdesk_bridge_loader.cpp`, core d.ts, app d.ts, and `NativeRustDeskBridge.ts` in one change.
+
 ## 2026-06-15: C++ ABI headers must match Rust extern signatures exactly
 
 ### Symptom
