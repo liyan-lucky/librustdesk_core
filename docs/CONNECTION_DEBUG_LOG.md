@@ -2,7 +2,7 @@
 
 > 本文记录每一轮连接和核心调试过程。当前结论以最新时间段为准，历史段落保留排查脉络。
 
-## 2026-06-15 core-81 本地预发布：captureRequired 与 OHOS scrap 入站帧源
+## 2026-06-15 core-81 发布：captureRequired 与 OHOS scrap 入站帧源
 
 ### 现象
 
@@ -20,7 +20,7 @@
 - 从真实 `%VSCODE_ROOT%\13_librustdesk_core` 执行 `powershell -ExecutionPolicy Bypass -File scripts\build_native_bridge.ps1` 通过。
 - 本地产物：`F:\Visual_Studio_Code\99_Temp\rustdesk_harmonyos_build\native_rust_core\target\aarch64-unknown-linux-ohos\release\librustdesk_harmony_bridge.a`，`128,894,588` bytes，SHA256 `2DC3B655664B756E255684D28FBA0CB3A9DEC14E6080EA4682FA26486ADF9B6D`。
 - 11 App 使用该本地核心构建 `0.22.6` / versionCode `1000109`，signed HAP `18,433,473` bytes，SHA256 `4D669584F44B6462F570747723E66EB2894204FF7860CA0FBB27339D7FCE7DDD`；验包、66 项连接链路审计、无线安装启动和干净 app hilog 均通过。
-- 待线上发布：推送核心后等待 GitHub Actions 发布 `core-81`，再让 11 App 强制拉取线上 latest core 重新构建和安装验证。
+- 线上发布：GitHub Actions run `27563925971` 已成功发布 `core-81`，release body 已补中文说明；线上 asset `131,631,706` bytes，SHA256 `64463fa57005cd5ccd99bafa9a40f18a9d605f8e90f5e199f92b38abfcdb4829`。下一步让 11 App 强制拉取线上 latest core 重新构建和安装验证。
 
 ## 2026-06-15 共享入站屏幕帧进入核心缓存
 

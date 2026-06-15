@@ -22,6 +22,7 @@
 - Implemented an OHOS `scrap` incoming frame source: `Display::primary/all` return usable display metadata, and `Capturer::frame()` returns the latest incoming cache payload as `Frame::PixelBuffer`.
 - Kept `incomingReady=false` until the desktop server/video source is actually ready to serve remote peers.
 - Local release build from the real core path passed. Produced `librustdesk_harmony_bridge.a` size `128,894,588` bytes, SHA256 `2DC3B655664B756E255684D28FBA0CB3A9DEC14E6080EA4682FA26486ADF9B6D`.
+- 中文发布说明：GitHub Actions run `27563925971` 已发布 `core-81`，用于 `captureRequired` 中间态和 OHOS scrap incoming frame source；线上 asset `131,631,706` bytes，SHA256 `64463fa57005cd5ccd99bafa9a40f18a9d605f8e90f5e199f92b38abfcdb4829`。
 
 ### Avoidance
 
