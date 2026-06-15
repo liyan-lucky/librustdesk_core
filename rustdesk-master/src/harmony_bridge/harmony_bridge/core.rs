@@ -18,6 +18,7 @@ static LATEST_VIDEO_FRAME: OnceLock<Mutex<Option<VideoFrameState>>> = OnceLock::
 static INCOMING_SCREEN_FRAME: OnceLock<Mutex<Option<IncomingScreenFrameState>>> = OnceLock::new();
 static ACTIVE_SESSION: OnceLock<Mutex<Option<Session<HarmonyHandler>>>> = OnceLock::new();
 static INCOMING_SERVICE_STARTED: OnceLock<Mutex<bool>> = OnceLock::new();
+static INCOMING_SERVICE_REQUESTED: OnceLock<Mutex<bool>> = OnceLock::new();
 
 #[derive(Clone, Debug)]
 struct VideoFrameState {
@@ -76,6 +77,10 @@ fn active_session() -> &'static Mutex<Option<Session<HarmonyHandler>>> {
 
 fn incoming_service_started() -> &'static Mutex<bool> {
     INCOMING_SERVICE_STARTED.get_or_init(|| Mutex::new(false))
+}
+
+fn incoming_service_requested() -> &'static Mutex<bool> {
+    INCOMING_SERVICE_REQUESTED.get_or_init(|| Mutex::new(false))
 }
 
 pub fn get_session_stage() -> String {
@@ -151,6 +156,7 @@ fn escape_json(value: &str) -> String {
 /// Returns a JSON snapshot of the core state for the given server.
 pub fn get_core_snapshot_json(server: &str) -> String {
     let incoming_ready = *incoming_service_started().lock().unwrap();
+    let incoming_requested = *incoming_service_requested().lock().unwrap();
     let incoming_frame = incoming_screen_frame().lock().unwrap().clone();
     let incoming_frame_payload_ready = incoming_frame
         .as_ref()
@@ -164,13 +170,18 @@ pub fn get_core_snapshot_json(server: &str) -> String {
         "fingerprint": "",
         "directAddress": "",
         "server": server,
+        "captureRequired": incoming_requested && !incoming_ready,
         "incomingFramePayloadReady": incoming_frame_payload_ready,
         "incomingFrameId": incoming_frame.as_ref().map(|frame| frame.frame_id).unwrap_or(0),
         "incomingFrameBytes": incoming_frame.as_ref().map(|frame| frame.data_length).unwrap_or(0),
         "incomingFramesSeen": incoming_frame.as_ref().map(|frame| frame.frames_seen).unwrap_or(0),
-        "statusSummary": if incoming_ready { "Incoming service requested" } else { "Official Harmony bridge ready" },
+        "statusSummary": if incoming_ready || incoming_requested { "Incoming service requested" } else { "Official Harmony bridge ready" },
         "detailMessage": if incoming_ready {
             "Harmony bridge applied incoming service options. Desktop server thread launch is disabled on Harmony to avoid appspawn exit."
+        } else if incoming_requested && incoming_frame_payload_ready {
+            "Harmony native screen frames are cached in core. Desktop server subscription is still disabled on Harmony."
+        } else if incoming_requested {
+            "Harmony incoming service requested. Waiting for native screen recording to provide the first live frame."
         } else {
             "Official Harmony bridge is initialized."
         },
@@ -278,6 +289,8 @@ pub fn copy_incoming_screen_frame(frame_id: u64, buffer: &mut [u8]) -> c_int {
 /// Clears the latest incoming screen frame cache.
 pub fn clear_incoming_screen_frame() {
     *incoming_screen_frame().lock().unwrap() = None;
+    #[cfg(target_env = "ohos")]
+    scrap::clear_ohos_incoming_frame();
 }
 
 /// Updates the latest incoming screen frame from the Harmony native capture path.
@@ -316,7 +329,7 @@ pub fn update_incoming_screen_frame(
             )
         })
         .unwrap_or((1, 1));
-    *guard = Some(IncomingScreenFrameState {
+    let next_frame = IncomingScreenFrameState {
         frame_id,
         width,
         height,
@@ -326,7 +339,19 @@ pub fn update_incoming_screen_frame(
         timestamp,
         format: normalized_format,
         frames_seen,
-    });
+    };
+    #[cfg(target_env = "ohos")]
+    if !scrap::update_ohos_incoming_frame(
+        frame_id,
+        width,
+        height,
+        stride,
+        &next_frame.format,
+        &next_frame.bytes,
+    ) {
+        return false;
+    }
+    *guard = Some(next_frame);
     drop(guard);
     if first_frame {
         queue_event(
@@ -377,12 +402,13 @@ pub fn set_incoming_service_enabled(
     if enabled {
         config::Config::set_option("stop-service".to_owned(), "Y".to_owned());
         *incoming_service_started().lock().unwrap() = false;
+        *incoming_service_requested().lock().unwrap() = true;
         clear_incoming_screen_frame();
         crate::common::set_server_running(false);
         crate::RendezvousMediator::restart();
-        let detail = "Harmony incoming service is unavailable because the desktop server and screen capture pipeline are not wired on this target.";
+        let detail = "Harmony incoming service requested. Waiting for native screen recording to provide the first live frame.";
         queue_event(
-            "incoming-service-unavailable",
+            "incoming-service-requested",
             detail,
             "",
         );
@@ -396,9 +422,12 @@ pub fn set_incoming_service_enabled(
             "server": server,
             "captureRequired": true,
             "incomingFramePayloadReady": false,
-            "statusSummary": "Incoming service unavailable",
+            "incomingFrameId": 0,
+            "incomingFrameBytes": 0,
+            "incomingFramesSeen": 0,
+            "statusSummary": "Incoming service requested",
             "detailMessage": detail,
-            "lastError": detail,
+            "lastError": "",
             "sessionStage": get_session_stage(),
             "activePeerId": get_active_peer_id(),
         })
@@ -408,6 +437,7 @@ pub fn set_incoming_service_enabled(
         crate::common::set_server_running(false);
         crate::RendezvousMediator::restart();
         *incoming_service_started().lock().unwrap() = false;
+        *incoming_service_requested().lock().unwrap() = false;
         clear_incoming_screen_frame();
         json!({
             "adapter": "official-native",

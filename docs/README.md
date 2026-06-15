@@ -26,6 +26,8 @@
 
 > 2026-06-15 中文说明（已发布标签 `core-80`）：共享/被控链路不能只在 App 侧统计 native buffer。核心已新增 `incoming_screen_frame` latest-frame 缓存和 C ABI/NAPI：`updateIncomingScreenFrame/getIncomingScreenFrameMetadata/copyIncomingScreenFrame/clearIncomingScreenFrame`，App native `OH_AVScreenCapture_StartScreenCapture` 可把 mapped buffer payload 推进核心。`incomingReady` 仍保持 false，必须等 desktop server/video source 真接通后才能置 true。本地核心构建已通过，产物 `128,711,798` bytes，SHA256 `877AA1B9F27425D07B31193E0CABE6804FDE88AD5F8B622B0F5D52865CC54D5F`；GitHub Actions run `27526413545` 已成功发布 `core-80`，线上 asset `131,624,954` bytes，SHA256 `4047C8432BCA6C7F5FECBD4E1D6F55BE9717F28889B4699043A74138800E0E2A`。
 
+> 2026-06-15 中文说明（core-81 本地预发布，待线上发布）：共享启动不能只等 `incomingReady=true` 才启动 App 录屏，否则核心等首帧、App 等 ready 会形成死锁。本轮新增 `captureRequired` 快照字段：`main_start_service(true)` 返回 `captureRequired=true`、`incomingReady=false`，App 看到该状态后启动 native `OH_AVScreenCapture_StartScreenCapture` 并推首帧。核心 `scrap::common::ohos::Capturer` 现在从 incoming frame cache 读取最新帧，`Display::primary/all` 也返回可用 OHOS display 信息；但 desktop server/video source 未真正 ready 前仍不能把 `incomingReady` 置 true。本地核心构建已通过，产物 `128,894,588` bytes，SHA256 `2DC3B655664B756E255684D28FBA0CB3A9DEC14E6080EA4682FA26486ADF9B6D`；11 App 使用该本地核心构建 `0.22.6` 并完成验包、66 项审计、无线安装和干净 hilog 验证。
+
 ## 文档列表
 
 | 文件 | 说明 |

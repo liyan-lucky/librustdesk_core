@@ -2,6 +2,33 @@
 
 > 记录容易复发的构建、发布和排查问题。新增经验时优先写清楚：现象、根因、修复、以后如何避免。
 
+## 2026-06-15: OHOS share capture needs `captureRequired`, not fake `incomingReady`
+
+### Symptom
+
+- After core-80, the app could push native screen-capture payload into the core incoming frame cache.
+- If the app waited for `incomingReady=true` before starting native capture, the core would wait for the first frame while the app waited for readiness.
+- If the core flipped `incomingReady=true` once a frame existed, the UI and remote peers would see a fake running service before the desktop server/video source was really ready.
+
+### Root cause
+
+- The incoming share state needed a middle signal between "service requested" and "service ready".
+- `incomingReady` is externally visible service readiness. It cannot also mean "please start capture now".
+- OHOS `scrap::common::ohos::Capturer` was still a stub, so the incoming frame cache was not a real frame source for the RustDesk capture path.
+
+### Fix
+
+- Added `captureRequired` to the Harmony core snapshot. `main_start_service(true)` returns `captureRequired=true`, `incomingReady=false`, and waits for the app to provide a live frame.
+- Implemented an OHOS `scrap` incoming frame source: `Display::primary/all` return usable display metadata, and `Capturer::frame()` returns the latest incoming cache payload as `Frame::PixelBuffer`.
+- Kept `incomingReady=false` until the desktop server/video source is actually ready to serve remote peers.
+- Local release build from the real core path passed. Produced `librustdesk_harmony_bridge.a` size `128,894,588` bytes, SHA256 `2DC3B655664B756E255684D28FBA0CB3A9DEC14E6080EA4682FA26486ADF9B6D`.
+
+### Avoidance
+
+- Use three separate meanings: `captureRequired` starts app capture, `incomingFramePayloadReady` proves a frame exists in core memory, and `incomingReady` means the remote-facing service is ready.
+- Do not start Harmony screen recording from screenshot permission APIs or `AVScreenCaptureRecorder` probes.
+- When touching incoming share, update both active bridge and `src/harmony_bridge/harmony_bridge/core.rs` mirror so future copy/sync work cannot regress the state contract.
+
 ## 2026-06-15: Incoming share frame cache is not incoming service readiness
 
 ### Symptom

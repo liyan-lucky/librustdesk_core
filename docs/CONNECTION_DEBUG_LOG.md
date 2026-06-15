@@ -2,6 +2,26 @@
 
 > 本文记录每一轮连接和核心调试过程。当前结论以最新时间段为准，历史段落保留排查脉络。
 
+## 2026-06-15 core-81 本地预发布：captureRequired 与 OHOS scrap 入站帧源
+
+### 现象
+
+- core-80 已能接收 App native buffer payload，但 App 如果只等 `incomingReady=true` 才启动 native 录屏，会和核心等待首帧互相卡住。
+- 直接把 `incomingReady=true` 又会让远端误以为被控服务可用，实际 desktop server/video source 还没有完成 ready 闭环。
+
+### 修改
+
+- `rustdesk-master/libs/scrap/src/common/ohos.rs` 新增 OHOS incoming frame cache reader，`Display::primary/all` 返回当前 incoming frame 尺寸或 `720x1280` 兜底，`Capturer::frame()` 返回最新 `Frame::PixelBuffer`。
+- `rustdesk-master/src/harmony_bridge/core.rs` 与旧 mirror 新增 `captureRequired` 快照字段和 requested 状态：开启 incoming service 时返回 `captureRequired=true`、`incomingReady=false`，禁用时清理 requested 状态和 incoming frame cache。
+- `update_incoming_screen_frame()` 会同步更新 `scrap::update_ohos_incoming_frame(...)`，`clear_incoming_screen_frame()` 会同步清理 OHOS scrap cache。
+
+### 验证
+
+- 从真实 `%VSCODE_ROOT%\13_librustdesk_core` 执行 `powershell -ExecutionPolicy Bypass -File scripts\build_native_bridge.ps1` 通过。
+- 本地产物：`F:\Visual_Studio_Code\99_Temp\rustdesk_harmonyos_build\native_rust_core\target\aarch64-unknown-linux-ohos\release\librustdesk_harmony_bridge.a`，`128,894,588` bytes，SHA256 `2DC3B655664B756E255684D28FBA0CB3A9DEC14E6080EA4682FA26486ADF9B6D`。
+- 11 App 使用该本地核心构建 `0.22.6` / versionCode `1000109`，signed HAP `18,433,473` bytes，SHA256 `4D669584F44B6462F570747723E66EB2894204FF7860CA0FBB27339D7FCE7DDD`；验包、66 项连接链路审计、无线安装启动和干净 app hilog 均通过。
+- 待线上发布：推送核心后等待 GitHub Actions 发布 `core-81`，再让 11 App 强制拉取线上 latest core 重新构建和安装验证。
+
 ## 2026-06-15 共享入站屏幕帧进入核心缓存
 
 ### 现象
