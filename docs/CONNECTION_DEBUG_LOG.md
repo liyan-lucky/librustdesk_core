@@ -23,7 +23,7 @@
 - 从真实 `%VSCODE_ROOT%\13_librustdesk_core` 执行 `powershell -NoProfile -ExecutionPolicy Bypass -File scripts\build_native_bridge.ps1` 通过。
 - 本地产物：`F:\Visual_Studio_Code\99_Temp\rustdesk_harmonyos_build\native_rust_core\target\aarch64-unknown-linux-ohos\release\librustdesk_harmony_bridge.a`，`128,711,798` bytes，SHA256 `877AA1B9F27425D07B31193E0CABE6804FDE88AD5F8B622B0F5D52865CC54D5F`。
 - `llvm-nm` 已确认导出：`rustdesk_bridge_update_incoming_screen_frame`、`rustdesk_bridge_get_incoming_screen_frame_metadata`、`rustdesk_bridge_copy_incoming_screen_frame`、`rustdesk_bridge_clear_incoming_screen_frame`。
-- 待推送后等待 GitHub Actions 自动发布新标签；线上 release body 需要写中文说明，并在 11 App 拉取新核心后全量 HAP 构建/安装验证。
+- GitHub Actions run `27526413545` 已成功发布 `core-80`：`https://github.com/liyan-lucky/librustdesk_core/releases/tag/core-80`；线上 asset `131,624,954` bytes，SHA256 `4047C8432BCA6C7F5FECBD4E1D6F55BE9717F28889B4699043A74138800E0E2A`，release body 已补中文说明。11 App 需强制拉取该线上核心后重新构建、验包、审计和安装。
 
 ## 2026-06-15 远控会话命令返回值和录制/语音事件回流
 

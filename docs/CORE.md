@@ -25,7 +25,7 @@
 - 2026-06-14 发布验证：commit `1b987914a2c27ace376e5af45a9c6790d84d40b4` 已由 GitHub Actions run `27486100946` 发布为 `core-74`，release asset `131,471,786` bytes，SHA256 `3755D448FBB1A583E7B5F7C3C6ADEC29D8AF0FBB7E5DD192251CD18A68C45D7C`；11 App 已下载 latest core，全量 HAP 构建/验包/无线安装通过，设备锁屏仍阻断启动运行态。
 - 2026-06-15 源码更新（中文说明，已发布标签 `core-78`）：核心 C++ 源项目 `cpp/rustdesk_bridge_abi.h` 和 `cpp/rustdesk_bridge_loader.cpp` 已把 `rustdesk_bridge_session_send_chat` 从旧一参调用同步为 Rust ABI 的四参调用（`peer_id`、`message_type`、`content`、`timestamp`），并保留旧一参 fallback；核心 d.ts 也补齐 `connectToPeer` 和 `setIncomingServiceEnabled` 的自定义服务器 `key` 参数。否则后续从核心同步 `cpp/` 会覆盖 11 App 内已修复的聊天和自建服务器 key 路径。本地 release 构建通过，产物 `128,882,788` bytes，SHA256 `D0654CC920619957D99E640B7E18969135D224A0F562E26188241B41F47BC45A`。GitHub Actions run `27515510727` 已成功发布 `core-78`，线上 asset `131,470,442` bytes，SHA256 `F68E575D593BBE331E931E582870CB72EAA810BF56B817045162C44FCAF91ACD`。
 - 2026-06-15 源码更新（中文说明，已发布标签 `core-79`）：远控会话命令从核心到 app 必须返回真实执行状态。`session_toggle_privacy_mode/session_switch_display/session_enter_or_leave/session_leave/session_switch_sides/session_record_screen/session_request_voice_call/session_close_voice_call` 已从 Rust bridge、C ABI、C++ NAPI、d.ts 对齐为 bool 返回；无活动 session 时返回 false 并发 `session-command failed=no-active-session`，成功时记录 command 事件。`on_voice_call_started/on_voice_call_waiting/on_voice_call_incoming/on_voice_call_closed/update_record_status/handle_screenshot_resp` 已补事件回流，供 app 同步语音、录制、截图状态。本地核心构建脚本通过，产物 `129,028,464` bytes，SHA256 `650E467B3ED67DD368A329FA25BCC024584880FB9B82902C3BE95D2852035E62`。GitHub Actions run `27516993020` 已成功发布 `core-79`，线上 asset `131,493,470` bytes，SHA256 `8BBB12AA93EE8703ABBED5BA6D411031AD78CE7FA6A71D7C407A0A350A8789F2`。
-- 2026-06-15 源码更新（中文说明，待发布）：共享/被控链路新增核心入站屏幕帧缓存。`src/harmony_bridge/core.rs` 与旧 mirror 均新增 `IncomingScreenFrameState`、`update_incoming_screen_frame()`、`get_incoming_screen_frame_metadata_json()`、`copy_incoming_screen_frame()`、`clear_incoming_screen_frame()`；`native_rust_core/src/bridge_api.rs`、`cpp/rustdesk_bridge_abi.h`、`cpp/rustdesk_bridge_loader.cpp`、d.ts 已暴露 `updateIncomingScreenFrame/getIncomingScreenFrameMetadata/copyIncomingScreenFrame/clearIncomingScreenFrame`。该改动只把 App native `OH_AVScreenCapture` payload 推进核心缓存，`incomingReady` 仍不能置 true，避免无 desktop server/video source 时假共享。本地核心构建通过，产物 `128,711,798` bytes，SHA256 `877AA1B9F27425D07B31193E0CABE6804FDE88AD5F8B622B0F5D52865CC54D5F`；待推送 CI 发布后回填标签。
+- 2026-06-15 源码更新（中文说明，已发布标签 `core-80`）：共享/被控链路新增核心入站屏幕帧缓存。`src/harmony_bridge/core.rs` 与旧 mirror 均新增 `IncomingScreenFrameState`、`update_incoming_screen_frame()`、`get_incoming_screen_frame_metadata_json()`、`copy_incoming_screen_frame()`、`clear_incoming_screen_frame()`；`native_rust_core/src/bridge_api.rs`、`cpp/rustdesk_bridge_abi.h`、`cpp/rustdesk_bridge_loader.cpp`、d.ts 已暴露 `updateIncomingScreenFrame/getIncomingScreenFrameMetadata/copyIncomingScreenFrame/clearIncomingScreenFrame`。该改动只把 App native `OH_AVScreenCapture` payload 推进核心缓存，`incomingReady` 仍不能置 true，避免无 desktop server/video source 时假共享。本地核心构建通过，产物 `128,711,798` bytes，SHA256 `877AA1B9F27425D07B31193E0CABE6804FDE88AD5F8B622B0F5D52865CC54D5F`；GitHub Actions run `27526413545` 已成功发布 `core-80`，线上 asset `131,624,954` bytes，SHA256 `4047C8432BCA6C7F5FECBD4E1D6F55BE9717F28889B4699043A74138800E0E2A`。
 
 ## 架构总览
 
@@ -113,13 +113,13 @@ Native core:
 
 - 文件：`entry/src/main/libs/arm64/librustdesk_core.a`
 - Source URL: `https://github.com/liyan-lucky/librustdesk_core/releases/latest/download/librustdesk_core.a`
-- Release: `https://github.com/liyan-lucky/librustdesk_core/releases/tag/core-74`
-- Workflow: `https://github.com/liyan-lucky/librustdesk_core/actions/runs/27486100946`
-- Commit: `1b987914a2c27ace376e5af45a9c6790d84d40b4`
-- Size: `131,471,786` bytes (`125.38 MB`)
-- Build time observed: `2026-06-14 04:06`
-- FNV-1a 1MB: `404ef789`
-- SHA256: `3755D448FBB1A583E7B5F7C3C6ADEC29D8AF0FBB7E5DD192251CD18A68C45D7C`
+- Release: `https://github.com/liyan-lucky/librustdesk_core/releases/tag/core-80`
+- Workflow: `https://github.com/liyan-lucky/librustdesk_core/actions/runs/27526413545`
+- Commit: `12ad723907af594fdec210b8379cd7d662224102`
+- Size: `131,624,954` bytes (`125.53 MB`)
+- Build time observed: `2026-06-15 06:10 UTC`
+- FNV-1a 1MB: `bea81e95`
+- SHA256: `4047C8432BCA6C7F5FECBD4E1D6F55BE9717F28889B4699043A74138800E0E2A`
 - 已知异常 CI release：`core-62` 由 Cargo `dev` profile 生成，产物大小为 `595,083,124` bytes (`567.52 MiB`)，不要作为 HAP 核心来源使用。
 
 HAP:
