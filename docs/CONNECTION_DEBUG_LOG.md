@@ -2,6 +2,29 @@
 
 > 本文记录每一轮连接和核心调试过程。当前结论以最新时间段为准，历史段落保留排查脉络。
 
+## 2026-06-15 共享入站屏幕帧进入核心缓存
+
+### 现象
+
+- 11 App 已把屏幕采集从 `AVScreenCaptureRecorder`/临时 mp4 切到 native `OH_AVScreenCapture_StartScreenCapture`，但 13 核心仍没有接收 App native buffer payload 的入口。
+- 旧的 `send_video_frame_metadata()` 返回 false，只能说明“没有桥”，无法证明 native capture 到 core 的链路是否通。
+- 共享 `incomingReady` 仍不能直接打开，因为 OHOS desktop server/video source 还没有真正接上。
+
+### 修改
+
+- `rustdesk-master/src/harmony_bridge/core.rs` 和旧 mirror 增加 `IncomingScreenFrameState` latest-frame 缓存，独立于出站远控的 `LATEST_VIDEO_FRAME`。
+- 新增核心函数：`update_incoming_screen_frame()`、`get_incoming_screen_frame_metadata_json()`、`copy_incoming_screen_frame()`、`clear_incoming_screen_frame()`。
+- `native_rust_core/src/bridge_api.rs`、`cpp/rustdesk_bridge_abi.h`、`cpp/rustdesk_bridge_loader.cpp`、`cpp/types/librustdesk_bridge/index.d.ts` 同步 C ABI/NAPI/d.ts。
+- `send_video_frame_metadata()` 不再无条件 false，参数有效时记录 `incoming-video-frame-metadata` 事件；真实 payload 仍应走 `updateIncomingScreenFrame`。
+- `get_core_snapshot_json()` 增加 `incomingFramePayloadReady/incomingFrameId/incomingFrameBytes/incomingFramesSeen`，用于 App 诊断，但不改变 `incomingReady=false` 的安全边界。
+
+### 验证
+
+- 从真实 `%VSCODE_ROOT%\13_librustdesk_core` 执行 `powershell -NoProfile -ExecutionPolicy Bypass -File scripts\build_native_bridge.ps1` 通过。
+- 本地产物：`F:\Visual_Studio_Code\99_Temp\rustdesk_harmonyos_build\native_rust_core\target\aarch64-unknown-linux-ohos\release\librustdesk_harmony_bridge.a`，`128,711,798` bytes，SHA256 `877AA1B9F27425D07B31193E0CABE6804FDE88AD5F8B622B0F5D52865CC54D5F`。
+- `llvm-nm` 已确认导出：`rustdesk_bridge_update_incoming_screen_frame`、`rustdesk_bridge_get_incoming_screen_frame_metadata`、`rustdesk_bridge_copy_incoming_screen_frame`、`rustdesk_bridge_clear_incoming_screen_frame`。
+- 待推送后等待 GitHub Actions 自动发布新标签；线上 release body 需要写中文说明，并在 11 App 拉取新核心后全量 HAP 构建/安装验证。
+
 ## 2026-06-15 远控会话命令返回值和录制/语音事件回流
 
 ### 现象

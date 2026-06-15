@@ -24,6 +24,8 @@
 
 > 2026-06-15 中文说明：远控会话命令不能只接入 NAPI 函数名。`session_switch_sides/session_record_screen/session_request_voice_call/session_close_voice_call` 等必须从 Rust C ABI 到 C++ NAPI 再到 ArkTS 都返回 bool，并在无活动会话时返回失败事件；录制状态、截图响应、语音呼叫状态也必须通过核心事件回流给 app。本地核心构建已通过，产物 `129,028,464` bytes，SHA256 `650E467B3ED67DD368A329FA25BCC024584880FB9B82902C3BE95D2852035E62`。GitHub Actions run `27516993020` 已成功发布 `core-79`，线上 asset `131,493,470` bytes，SHA256 `8BBB12AA93EE8703ABBED5BA6D411031AD78CE7FA6A71D7C407A0A350A8789F2`。
 
+> 2026-06-15 中文说明（待发布）：共享/被控链路不能只在 App 侧统计 native buffer。核心已新增 `incoming_screen_frame` latest-frame 缓存和 C ABI/NAPI：`updateIncomingScreenFrame/getIncomingScreenFrameMetadata/copyIncomingScreenFrame/clearIncomingScreenFrame`，App native `OH_AVScreenCapture_StartScreenCapture` 可把 mapped buffer payload 推进核心。`incomingReady` 仍保持 false，必须等 desktop server/video source 真接通后才能置 true。本地核心构建已通过，产物 `128,711,798` bytes，SHA256 `877AA1B9F27425D07B31193E0CABE6804FDE88AD5F8B622B0F5D52865CC54D5F`；待推送后回填线上发布标签和 run。
+
 ## 文档列表
 
 | 文件 | 说明 |

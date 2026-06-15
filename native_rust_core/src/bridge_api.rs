@@ -101,6 +101,62 @@ pub extern "C" fn rustdesk_bridge_copy_latest_video_frame(
 }
 
 #[no_mangle]
+pub extern "C" fn rustdesk_bridge_get_incoming_screen_frame_metadata(
+    since_frame_id: u64,
+) -> *const c_char {
+    to_owned_c_string(
+        rustdesk_core::harmony_bridge::get_incoming_screen_frame_metadata_json(since_frame_id),
+    )
+}
+
+#[no_mangle]
+pub extern "C" fn rustdesk_bridge_copy_incoming_screen_frame(
+    frame_id: u64,
+    buffer: *mut u8,
+    buffer_len: usize,
+) -> c_int {
+    if buffer.is_null() || buffer_len == 0 {
+        return 0;
+    }
+    let target = unsafe { std::slice::from_raw_parts_mut(buffer, buffer_len) };
+    rustdesk_core::harmony_bridge::copy_incoming_screen_frame(frame_id, target)
+}
+
+#[no_mangle]
+pub extern "C" fn rustdesk_bridge_update_incoming_screen_frame(
+    width: c_int,
+    height: c_int,
+    stride: c_int,
+    timestamp: i64,
+    format: *const c_char,
+    data: *const u8,
+    data_len: usize,
+) -> c_int {
+    if data.is_null() || data_len == 0 {
+        return 0;
+    }
+    let format = read_c_string(format);
+    let source = unsafe { std::slice::from_raw_parts(data, data_len) };
+    if rustdesk_core::harmony_bridge::update_incoming_screen_frame(
+        width,
+        height,
+        stride,
+        timestamp,
+        &format,
+        source,
+    ) {
+        1
+    } else {
+        0
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn rustdesk_bridge_clear_incoming_screen_frame() {
+    rustdesk_core::harmony_bridge::clear_incoming_screen_frame();
+}
+
+#[no_mangle]
 pub extern "C" fn rustdesk_bridge_refresh_session_video(display: c_int) -> c_int {
     if rustdesk_core::harmony_bridge::refresh_session_video(display) {
         1
@@ -1358,6 +1414,15 @@ pub extern "C" fn rustdesk_bridge_get_latest_video_frame_metadata_json(
 ) -> *const c_char {
     to_owned_c_string(
         rustdesk_core::harmony_bridge::get_latest_video_frame_metadata_json(since_frame_id),
+    )
+}
+
+#[no_mangle]
+pub extern "C" fn rustdesk_bridge_get_incoming_screen_frame_metadata_json(
+    since_frame_id: u64,
+) -> *const c_char {
+    to_owned_c_string(
+        rustdesk_core::harmony_bridge::get_incoming_screen_frame_metadata_json(since_frame_id),
     )
 }
 

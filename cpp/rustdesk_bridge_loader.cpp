@@ -318,6 +318,93 @@ napi_value CopyLatestVideoFrame(napi_env env, napi_callback_info info) {
   return array_buffer;
 }
 
+napi_value GetIncomingScreenFrameMetadata(napi_env env, napi_callback_info info) {
+  size_t argc = 1;
+  napi_value args[1] = {nullptr};
+  napi_get_cb_info(env, info, &argc, args, nullptr, nullptr);
+  int64_t since_frame_id = 0;
+  if (argc > 0) napi_get_value_int64(env, args[0], &since_frame_id);
+  const char *metadata = rustdesk_bridge_get_incoming_screen_frame_metadata(static_cast<unsigned long long>(since_frame_id));
+  if (metadata == nullptr) return MakeNull(env);
+  const std::string copied(metadata);
+  rustdesk_bridge_string_free(metadata);
+  if (copied.empty() || copied == "null") return MakeNull(env);
+  return MakeString(env, copied);
+}
+
+napi_value CopyIncomingScreenFrame(napi_env env, napi_callback_info info) {
+  size_t argc = 2;
+  napi_value args[2] = {nullptr};
+  napi_get_cb_info(env, info, &argc, args, nullptr, nullptr);
+  int64_t frame_id = 0, expected_bytes = 0;
+  if (argc > 0) napi_get_value_int64(env, args[0], &frame_id);
+  if (argc > 1) napi_get_value_int64(env, args[1], &expected_bytes);
+  if (expected_bytes <= 0) return MakeNull(env);
+  void *data = nullptr;
+  napi_value array_buffer = nullptr;
+  napi_create_arraybuffer(env, static_cast<size_t>(expected_bytes), &data, &array_buffer);
+  const int copied = rustdesk_bridge_copy_incoming_screen_frame(static_cast<unsigned long long>(frame_id), static_cast<unsigned char *>(data), static_cast<unsigned long long>(expected_bytes));
+  if (copied <= 0 || copied != expected_bytes) return MakeNull(env);
+  return array_buffer;
+}
+
+napi_value UpdateIncomingScreenFrame(napi_env env, napi_callback_info info) {
+  size_t argc = 6;
+  napi_value args[6] = {nullptr};
+  napi_get_cb_info(env, info, &argc, args, nullptr, nullptr);
+  int32_t width = 0, height = 0, stride = 0;
+  int64_t timestamp = 0;
+  std::string format;
+  if (argc > 0) napi_get_value_int32(env, args[0], &width);
+  if (argc > 1) napi_get_value_int32(env, args[1], &height);
+  if (argc > 2) napi_get_value_int32(env, args[2], &stride);
+  if (argc > 3) napi_get_value_int64(env, args[3], &timestamp);
+  if (argc > 4) ReadUtf8String(env, args[4], &format);
+  void *data = nullptr;
+  size_t data_len = 0;
+  if (argc > 5 && args[5] != nullptr) {
+    bool is_array_buffer = false;
+    napi_is_arraybuffer(env, args[5], &is_array_buffer);
+    if (is_array_buffer) {
+      napi_get_arraybuffer_info(env, args[5], &data, &data_len);
+    } else {
+      bool is_typed_array = false;
+      napi_is_typedarray(env, args[5], &is_typed_array);
+      if (is_typed_array) {
+        napi_typedarray_type type;
+        size_t length = 0;
+        napi_value array_buffer = nullptr;
+        size_t byte_offset = 0;
+        napi_get_typedarray_info(env, args[5], &type, &length, &data, &array_buffer, &byte_offset);
+        (void)array_buffer;
+        (void)byte_offset;
+        data_len = length;
+        if (type != napi_uint8_array && type != napi_uint8_clamped_array) {
+          data = nullptr;
+          data_len = 0;
+        }
+      }
+    }
+  }
+  if (data == nullptr || data_len == 0) return MakeBool(env, false);
+  return MakeBool(env, rustdesk_bridge_update_incoming_screen_frame(
+    width,
+    height,
+    stride,
+    timestamp,
+    format.c_str(),
+    static_cast<const unsigned char *>(data),
+    static_cast<unsigned long long>(data_len)) != 0);
+}
+
+napi_value ClearIncomingScreenFrame(napi_env env, napi_callback_info info) {
+  (void)info;
+  rustdesk_bridge_clear_incoming_screen_frame();
+  napi_value undefined = nullptr;
+  napi_get_undefined(env, &undefined);
+  return undefined;
+}
+
 napi_value RefreshSessionVideo(napi_env env, napi_callback_info info) {
   size_t argc = 1;
   napi_value args[1] = {nullptr};
@@ -818,6 +905,15 @@ napi_value GetLatestVideoFrameMetadataJson(napi_env env, napi_callback_info info
   int64_t since_frame_id = 0;
   if (argc > 0) napi_get_value_int64(env, args[0], &since_frame_id);
   return MakeString(env, CopyOwnedText(rustdesk_bridge_get_latest_video_frame_metadata_json(static_cast<unsigned long long>(since_frame_id))));
+}
+
+napi_value GetIncomingScreenFrameMetadataJson(napi_env env, napi_callback_info info) {
+  size_t argc = 1;
+  napi_value args[1] = {nullptr};
+  napi_get_cb_info(env, info, &argc, args, nullptr, nullptr);
+  int64_t since_frame_id = 0;
+  if (argc > 0) napi_get_value_int64(env, args[0], &since_frame_id);
+  return MakeString(env, CopyOwnedText(rustdesk_bridge_get_incoming_screen_frame_metadata_json(static_cast<unsigned long long>(since_frame_id))));
 }
 
 napi_value MainStartService(napi_env env, napi_callback_info info) {
@@ -3720,6 +3816,10 @@ static napi_value Init(napi_env env, napi_value exports) {
     {"pullSessionEvents", nullptr, PullSessionEvents, nullptr, nullptr, nullptr, napi_default, nullptr},
     {"getLatestVideoFrameMetadata", nullptr, GetLatestVideoFrameMetadata, nullptr, nullptr, nullptr, napi_default, nullptr},
     {"copyLatestVideoFrame", nullptr, CopyLatestVideoFrame, nullptr, nullptr, nullptr, napi_default, nullptr},
+    {"getIncomingScreenFrameMetadata", nullptr, GetIncomingScreenFrameMetadata, nullptr, nullptr, nullptr, napi_default, nullptr},
+    {"copyIncomingScreenFrame", nullptr, CopyIncomingScreenFrame, nullptr, nullptr, nullptr, napi_default, nullptr},
+    {"updateIncomingScreenFrame", nullptr, UpdateIncomingScreenFrame, nullptr, nullptr, nullptr, napi_default, nullptr},
+    {"clearIncomingScreenFrame", nullptr, ClearIncomingScreenFrame, nullptr, nullptr, nullptr, napi_default, nullptr},
     {"refreshSessionVideo", nullptr, RefreshSessionVideo, nullptr, nullptr, nullptr, napi_default, nullptr},
     {"harmonyNextRgba", nullptr, HarmonyNextRgba, nullptr, nullptr, nullptr, napi_default, nullptr},
     {"connectToPeer", nullptr, ConnectToPeer, nullptr, nullptr, nullptr, napi_default, nullptr},
@@ -3772,6 +3872,7 @@ static napi_value Init(napi_env env, napi_value exports) {
     {"pullSessionEventsJson", nullptr, PullSessionEventsJson, nullptr, nullptr, nullptr, napi_default, nullptr},
     {"pullAudioFramesJson", nullptr, PullAudioFramesJson, nullptr, nullptr, nullptr, napi_default, nullptr},
     {"getLatestVideoFrameMetadataJson", nullptr, GetLatestVideoFrameMetadataJson, nullptr, nullptr, nullptr, napi_default, nullptr},
+    {"getIncomingScreenFrameMetadataJson", nullptr, GetIncomingScreenFrameMetadataJson, nullptr, nullptr, nullptr, napi_default, nullptr},
     {"mainStartService", nullptr, MainStartService, nullptr, nullptr, nullptr, napi_default, nullptr},
     {"sessionSendMouse", nullptr, SessionSendMouse, nullptr, nullptr, nullptr, napi_default, nullptr},
     {"sessionInputKey", nullptr, SessionInputKey, nullptr, nullptr, nullptr, napi_default, nullptr},

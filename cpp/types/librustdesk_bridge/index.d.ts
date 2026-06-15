@@ -8,6 +8,17 @@ export const initializeRuntime: (appDir: string, customClientConfig: string) => 
 export const pullSessionEvents: () => string;
 export const getLatestVideoFrameMetadata: (sinceFrameId: number) => string | null;
 export const copyLatestVideoFrame: (frameId: number, expectedBytes: number) => ArrayBuffer | null;
+export const getIncomingScreenFrameMetadata: (sinceFrameId: number) => string | null;
+export const copyIncomingScreenFrame: (frameId: number, expectedBytes: number) => ArrayBuffer | null;
+export const updateIncomingScreenFrame: (
+  width: number,
+  height: number,
+  stride: number,
+  timestamp: number,
+  format: string,
+  data: ArrayBuffer | Uint8Array
+) => boolean;
+export const clearIncomingScreenFrame: () => void;
 export const refreshSessionVideo: (display: number) => boolean;
 export const harmonyNextRgba: (display: number) => void;
 export const connectToPeer: (peerId: string, password: string, server: string, relayServer: string, apiServer: string, key: string) => void;
@@ -59,6 +70,7 @@ export const getCoreSnapshotJson: (server: string) => string;
 export const pullSessionEventsJson: () => string;
 export const pullAudioFramesJson: () => string;
 export const getLatestVideoFrameMetadataJson: (since_frame_id: number) => string;
+export const getIncomingScreenFrameMetadataJson: (since_frame_id: number) => string;
 export const mainStartService: (enabled: boolean, server: string, relay_server: string, api_server: string, key: string) => string;
 export const sessionSendMouse: (mask: number, x: number, y: number) => boolean;
 export const sessionInputKey: (key_code: number, is_pressed: boolean, modifiers: number) => boolean;

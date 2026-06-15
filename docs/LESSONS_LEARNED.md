@@ -2,6 +2,31 @@
 
 > 记录容易复发的构建、发布和排查问题。新增经验时优先写清楚：现象、根因、修复、以后如何避免。
 
+## 2026-06-15: Incoming share frame cache is not incoming service readiness
+
+### Symptom
+
+- The Harmony app could start native `OH_AVScreenCapture` and count buffers, but the core had no ABI to receive that payload.
+- It was tempting to flip `incomingReady=true` once native buffers appeared.
+
+### Root cause
+
+- Incoming sharing has multiple layers: app screen-capture permission, native buffer acquisition, core frame ingestion, desktop server/video source subscription, and rendezvous/service readiness.
+- A frame payload in core memory is necessary progress, but it is not enough for a remote peer to receive RustDesk video frames.
+
+### Fix
+
+- Added an independent `incoming_screen_frame` latest-frame cache in the Harmony bridge and old mirror.
+- Added C ABI/NAPI/d.ts functions: `updateIncomingScreenFrame`, `getIncomingScreenFrameMetadata`, `copyIncomingScreenFrame`, and `clearIncomingScreenFrame`.
+- Kept `incomingReady=false` while the OHOS desktop server/video source path is still missing.
+- Local release build from the real core path passed. Produced `librustdesk_harmony_bridge.a` size `128,711,798` bytes, SHA256 `877AA1B9F27425D07B31193E0CABE6804FDE88AD5F8B622B0F5D52865CC54D5F`.
+
+### Avoidance
+
+- Do not reuse outbound remote-control `latest_video_frame` for incoming share frames; keep directions separate.
+- Do not mark incoming service ready until both the desktop server side and the video source subscription can consume the incoming frame payload.
+- When adding core frame ingestion, update Rust bridge, C ABI, C++ NAPI, d.ts, app C++ copy, and ArkTS wrapper together.
+
 ## 2026-06-15: Direct session functions need status returns and event parity
 
 ### Symptom

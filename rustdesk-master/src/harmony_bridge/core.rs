@@ -15,6 +15,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 static CONNECT_STATE: OnceLock<Mutex<ConnectState>> = OnceLock::new();
 static LOCAL_OPTIONS: OnceLock<Mutex<HashMap<String, String>>> = OnceLock::new();
 static LATEST_VIDEO_FRAME: OnceLock<Mutex<Option<VideoFrameState>>> = OnceLock::new();
+static INCOMING_SCREEN_FRAME: OnceLock<Mutex<Option<IncomingScreenFrameState>>> = OnceLock::new();
 static ACTIVE_SESSION: OnceLock<Mutex<Option<Session<HarmonyHandler>>>> = OnceLock::new();
 static INCOMING_SERVICE_STARTED: OnceLock<Mutex<bool>> = OnceLock::new();
 
@@ -28,6 +29,19 @@ struct VideoFrameState {
     bytes: Vec<u8>,
     timestamp: i64,
     format: String,
+}
+
+#[derive(Clone, Debug)]
+struct IncomingScreenFrameState {
+    frame_id: u64,
+    width: usize,
+    height: usize,
+    stride: usize,
+    data_length: usize,
+    bytes: Vec<u8>,
+    timestamp: i64,
+    format: String,
+    frames_seen: u64,
 }
 
 #[derive(Clone, Debug, Default)]
@@ -50,6 +64,10 @@ fn local_options() -> &'static Mutex<HashMap<String, String>> {
 
 fn latest_video_frame() -> &'static Mutex<Option<VideoFrameState>> {
     LATEST_VIDEO_FRAME.get_or_init(|| Mutex::new(None))
+}
+
+fn incoming_screen_frame() -> &'static Mutex<Option<IncomingScreenFrameState>> {
+    INCOMING_SCREEN_FRAME.get_or_init(|| Mutex::new(None))
 }
 
 fn active_session() -> &'static Mutex<Option<Session<HarmonyHandler>>> {
@@ -141,6 +159,11 @@ fn escape_json(value: &str) -> String {
 /// Returns a JSON snapshot of the core state for the given server.
 pub fn get_core_snapshot_json(server: &str) -> String {
     let incoming_ready = *incoming_service_started().lock().unwrap();
+    let incoming_frame = incoming_screen_frame().lock().unwrap().clone();
+    let incoming_frame_payload_ready = incoming_frame
+        .as_ref()
+        .map(|frame| !frame.bytes.is_empty() && frame.width > 0 && frame.height > 0)
+        .unwrap_or(false);
     let status_summary = get_connect_status_summary();
     let detail_message = get_connect_detail_message();
     let last_error = get_connect_last_error();
@@ -152,6 +175,10 @@ pub fn get_core_snapshot_json(server: &str) -> String {
         "fingerprint": "",
         "directAddress": "",
         "server": server,
+        "incomingFramePayloadReady": incoming_frame_payload_ready,
+        "incomingFrameId": incoming_frame.as_ref().map(|frame| frame.frame_id).unwrap_or(0),
+        "incomingFrameBytes": incoming_frame.as_ref().map(|frame| frame.data_length).unwrap_or(0),
+        "incomingFramesSeen": incoming_frame.as_ref().map(|frame| frame.frames_seen).unwrap_or(0),
         "statusSummary": if !status_summary.trim().is_empty() {
             status_summary
         } else if incoming_ready {
@@ -229,6 +256,107 @@ pub fn copy_latest_video_frame(frame_id: u64, buffer: &mut [u8]) -> c_int {
     frame.bytes.len() as c_int
 }
 
+/// Returns the latest incoming screen frame metadata as JSON since the given frame ID.
+pub fn get_incoming_screen_frame_metadata_json(since_frame_id: u64) -> String {
+    let guard = incoming_screen_frame().lock().unwrap();
+    let Some(frame) = guard.as_ref() else {
+        return "{}".to_owned();
+    };
+    if frame.frame_id <= since_frame_id {
+        return "{}".to_owned();
+    }
+    json!({
+        "frameId": frame.frame_id,
+        "width": frame.width,
+        "height": frame.height,
+        "stride": frame.stride,
+        "bytes": frame.data_length,
+        "payloadBytes": frame.bytes.len(),
+        "hasPayload": !frame.bytes.is_empty(),
+        "timestamp": frame.timestamp,
+        "format": frame.format,
+        "framesSeen": frame.frames_seen,
+    })
+    .to_string()
+}
+
+/// Copies the latest incoming screen frame data into the provided buffer.
+/// Returns the number of bytes written, or 0 on failure.
+pub fn copy_incoming_screen_frame(frame_id: u64, buffer: &mut [u8]) -> c_int {
+    let guard = incoming_screen_frame().lock().unwrap();
+    let Some(frame) = guard.as_ref() else {
+        return 0;
+    };
+    if frame.frame_id != frame_id || frame.bytes.is_empty() || buffer.len() < frame.bytes.len() {
+        return 0;
+    }
+    buffer[..frame.bytes.len()].copy_from_slice(&frame.bytes);
+    frame.bytes.len() as c_int
+}
+
+/// Clears the latest incoming screen frame cache.
+pub fn clear_incoming_screen_frame() {
+    *incoming_screen_frame().lock().unwrap() = None;
+}
+
+/// Updates the latest incoming screen frame from the Harmony native capture path.
+/// Returns true when the frame payload was accepted by the core bridge cache.
+pub fn update_incoming_screen_frame(
+    width: c_int,
+    height: c_int,
+    stride: c_int,
+    timestamp: i64,
+    format: &str,
+    data: &[u8],
+) -> bool {
+    if width <= 0 || height <= 0 || stride <= 0 || data.is_empty() {
+        return false;
+    }
+    let width = width as usize;
+    let height = height as usize;
+    let stride = stride as usize;
+    let min_len = stride.saturating_mul(height);
+    if min_len == 0 || data.len() < min_len {
+        return false;
+    }
+    let normalized_format = if format.trim().is_empty() {
+        "RGBA".to_owned()
+    } else {
+        format.trim().to_owned()
+    };
+    let mut guard = incoming_screen_frame().lock().unwrap();
+    let first_frame = guard.is_none();
+    let (frame_id, frames_seen) = guard
+        .as_ref()
+        .map(|frame| {
+            (
+                frame.frame_id.saturating_add(1),
+                frame.frames_seen.saturating_add(1),
+            )
+        })
+        .unwrap_or((1, 1));
+    *guard = Some(IncomingScreenFrameState {
+        frame_id,
+        width,
+        height,
+        stride,
+        data_length: min_len,
+        bytes: data[..min_len].to_vec(),
+        timestamp,
+        format: normalized_format,
+        frames_seen,
+    });
+    drop(guard);
+    if first_frame {
+        queue_event(
+            "incoming-video-source-active",
+            &format!("width={width};height={height};stride={stride};bytes={min_len}"),
+            "",
+        );
+    }
+    true
+}
+
 /// Refreshes the session video for the given display.
 /// Returns true if the refresh was successful.
 pub fn refresh_session_video(display: c_int) -> bool {
@@ -268,6 +396,7 @@ pub fn main_start_service(
     if enabled {
         config::Config::set_option("stop-service".to_owned(), "Y".to_owned());
         *incoming_service_started().lock().unwrap() = false;
+        clear_incoming_screen_frame();
         crate::common::set_server_running(false);
         crate::RendezvousMediator::restart();
         let detail = "Harmony incoming service is unavailable because the desktop server and screen capture pipeline are not wired on this target.";
@@ -284,6 +413,8 @@ pub fn main_start_service(
             "fingerprint": "",
             "directAddress": "",
             "server": server,
+            "captureRequired": true,
+            "incomingFramePayloadReady": false,
             "statusSummary": "Incoming service unavailable",
             "detailMessage": detail,
             "lastError": detail,
@@ -296,6 +427,7 @@ pub fn main_start_service(
         crate::common::set_server_running(false);
         crate::RendezvousMediator::restart();
         *incoming_service_started().lock().unwrap() = false;
+        clear_incoming_screen_frame();
         json!({
             "adapter": "official-native",
             "coreReady": true,
@@ -304,6 +436,8 @@ pub fn main_start_service(
             "fingerprint": "",
             "directAddress": "",
             "server": server,
+            "captureRequired": false,
+            "incomingFramePayloadReady": false,
             "statusSummary": "Incoming service stopped",
             "detailMessage": "Incoming service stop has been requested by the Harmony bridge.",
             "lastError": "",
@@ -469,14 +603,25 @@ pub fn send_clipboard_data(content: &str, _timestamp: i64) -> bool {
 /// Sends video frame metadata.
 /// Returns true if the metadata was sent successfully.
 pub fn send_video_frame_metadata(
-    _codec: c_int,
-    _width: c_int,
-    _height: c_int,
-    _timestamp: i64,
-    _key_frame: bool,
-    _data_length: c_int,
+    codec: c_int,
+    width: c_int,
+    height: c_int,
+    timestamp: i64,
+    key_frame: bool,
+    data_length: c_int,
 ) -> bool {
-    false
+    if width <= 0 || height <= 0 || data_length <= 0 {
+        return false;
+    }
+    queue_event(
+        "incoming-video-frame-metadata",
+        &format!(
+            "codec={codec};width={width};height={height};timestamp={timestamp};keyFrame={};bytes={data_length}",
+            if key_frame { 1 } else { 0 }
+        ),
+        "",
+    );
+    true
 }
 
 /// Sends audio frame metadata.

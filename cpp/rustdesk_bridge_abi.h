@@ -15,6 +15,20 @@ int rustdesk_bridge_copy_latest_video_frame(
     unsigned long long frame_id,
     unsigned char *buffer,
     unsigned long long buffer_len);
+const char *rustdesk_bridge_get_incoming_screen_frame_metadata(unsigned long long since_frame_id);
+int rustdesk_bridge_copy_incoming_screen_frame(
+    unsigned long long frame_id,
+    unsigned char *buffer,
+    unsigned long long buffer_len);
+int rustdesk_bridge_update_incoming_screen_frame(
+    int width,
+    int height,
+    int stride,
+    long long timestamp,
+    const char *format,
+    const unsigned char *data,
+    unsigned long long data_len);
+void rustdesk_bridge_clear_incoming_screen_frame(void);
 int rustdesk_bridge_refresh_session_video(int display);
 void rustdesk_bridge_harmony_next_rgba(int display);
 const char *rustdesk_bridge_bootstrap_core_snapshot(
@@ -63,6 +77,7 @@ const char * rustdesk_bridge_get_core_snapshot_json(const char * server);
 const char * rustdesk_bridge_pull_session_events_json(void);
 const char * rustdesk_bridge_pull_audio_frames_json(void);
 const char * rustdesk_bridge_get_latest_video_frame_metadata_json(unsigned long long since_frame_id);
+const char * rustdesk_bridge_get_incoming_screen_frame_metadata_json(unsigned long long since_frame_id);
 const char * rustdesk_bridge_main_start_service(int enabled, const char * server, const char * relay_server, const char * api_server, const char * key);
 int rustdesk_bridge_session_send_mouse(int mask, int x, int y);
 int rustdesk_bridge_session_input_key(int key_code, int is_pressed, int modifiers);
