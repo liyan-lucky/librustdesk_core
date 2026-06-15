@@ -20,7 +20,7 @@
 
 - 从真实 `%VSCODE_ROOT%\13_librustdesk_core` 执行 `powershell -NoProfile -ExecutionPolicy Bypass -File scripts\build_native_bridge.ps1` 通过。
 - 本地产物：`entry/src/main/libs/arm64/librustdesk_core.a`，`129,028,464` bytes，SHA256 `650E467B3ED67DD368A329FA25BCC024584880FB9B82902C3BE95D2852035E62`。
-- 中文发布说明：本轮核心更新用于让远控会话命令具备真实成功/失败返回值，并让录制、截图、语音呼叫状态从核心回流；推送后等待 GitHub Actions 自动发布并回填实际标签，预期下一标签为 `core-79`。
+- 中文发布说明：本轮核心更新用于让远控会话命令具备真实成功/失败返回值，并让录制、截图、语音呼叫状态从核心回流；GitHub Actions run `27516993020` 已成功发布 `core-79`，线上 asset `131,493,470` bytes，SHA256 `8BBB12AA93EE8703ABBED5BA6D411031AD78CE7FA6A71D7C407A0A350A8789F2`。
 
 ## 2026-06-15 核心聊天 ABI 源项目回同步
 

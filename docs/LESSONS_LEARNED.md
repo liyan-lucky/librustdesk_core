@@ -21,6 +21,7 @@
 - Added `failed=no-active-session` command events when no active session exists.
 - Added event callbacks for voice-call started/waiting/incoming/closed, record-status, and screenshot-response.
 - Local release build from the real core path passed. Produced `librustdesk_core.a` size `129,028,464` bytes, SHA256 `650E467B3ED67DD368A329FA25BCC024584880FB9B82902C3BE95D2852035E62`.
+- 中文发布说明：GitHub Actions run `27516993020` 已发布 `core-79`，用于远控 direct session 命令状态返回和录制/截图/语音事件回流；线上 asset `131,493,470` bytes，SHA256 `8BBB12AA93EE8703ABBED5BA6D411031AD78CE7FA6A71D7C407A0A350A8789F2`。
 
 ### Avoidance
 

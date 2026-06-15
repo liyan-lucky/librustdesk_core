@@ -22,7 +22,7 @@
 
 > 2026-06-15 中文说明：核心 C++ 源项目的 `rustdesk_bridge_session_send_chat` 声明/调用仍停留在旧一参版本，和 Rust ABI 四参签名不一致；本轮已同步为 `peer_id/message_type/content/timestamp` 四参并保留一参 fallback。同时核心 d.ts 补齐自定义服务器 `key` 参数，避免覆盖 app 副本。GitHub Actions run `27515510727` 已发布标签 `core-78`，asset `librustdesk_core.a` 为 `131,470,442` bytes，SHA256 `F68E575D593BBE331E931E582870CB72EAA810BF56B817045162C44FCAF91ACD`。
 
-> 2026-06-15 中文说明：远控会话命令不能只接入 NAPI 函数名。`session_switch_sides/session_record_screen/session_request_voice_call/session_close_voice_call` 等必须从 Rust C ABI 到 C++ NAPI 再到 ArkTS 都返回 bool，并在无活动会话时返回失败事件；录制状态、截图响应、语音呼叫状态也必须通过核心事件回流给 app。本地核心构建已通过，产物 `129,028,464` bytes，SHA256 `650E467B3ED67DD368A329FA25BCC024584880FB9B82902C3BE95D2852035E62`；推送后等待线上自动发布并回填实际标签，预期下一标签为 `core-79`。
+> 2026-06-15 中文说明：远控会话命令不能只接入 NAPI 函数名。`session_switch_sides/session_record_screen/session_request_voice_call/session_close_voice_call` 等必须从 Rust C ABI 到 C++ NAPI 再到 ArkTS 都返回 bool，并在无活动会话时返回失败事件；录制状态、截图响应、语音呼叫状态也必须通过核心事件回流给 app。本地核心构建已通过，产物 `129,028,464` bytes，SHA256 `650E467B3ED67DD368A329FA25BCC024584880FB9B82902C3BE95D2852035E62`。GitHub Actions run `27516993020` 已成功发布 `core-79`，线上 asset `131,493,470` bytes，SHA256 `8BBB12AA93EE8703ABBED5BA6D411031AD78CE7FA6A71D7C407A0A350A8789F2`。
 
 ## 文档列表
 
