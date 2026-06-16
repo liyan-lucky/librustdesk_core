@@ -35,8 +35,11 @@ impl ConnInner {
 }
 
 pub struct Server {
-    id_count: i32,
+    pub id_count: i32,
 }
+
+pub type ServerPtr = std::sync::Arc<std::sync::RwLock<Server>>;
+pub type ServerPtrWeak = std::sync::Weak<std::sync::RwLock<Server>>;
 
 impl Server {
     pub fn get_new_id(&mut self) -> i32 {
@@ -66,6 +69,19 @@ pub const MOUSE_MOVE_TIME: std::sync::atomic::AtomicI64 = std::sync::atomic::Ato
 
 pub fn check_zombie() {}
 
-pub async fn start_server(_is_server: bool, _no_server: bool) {}
+pub async fn start_server(is_server: bool, _no_server: bool) {
+    if is_server {
+        crate::common::set_server_running(true);
+        hbb_common::log::info!("OHOS server starting: set_server_running(true), starting RendezvousMediator");
+        crate::harmony_bridge::core::queue_event(
+            "server-starting",
+            "OHOS incoming server starting",
+            "",
+        );
+        crate::RendezvousMediator::start_all().await;
+    } else {
+        hbb_common::log::info!("OHOS server not starting (is_server=false)");
+    }
+}
 
 pub async fn start_ipc_url_server() {}

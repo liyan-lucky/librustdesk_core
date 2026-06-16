@@ -421,18 +421,16 @@ pub fn main_start_service(
     apply_server_options(server, relay_server, api_server, key);
 
     if enabled {
-        config::Config::set_option("stop-service".to_owned(), "Y".to_owned());
+        config::Config::set_option("stop-service".to_owned(), "".to_owned());
         *incoming_service_started().lock().unwrap() = false;
         *incoming_service_requested().lock().unwrap() = true;
         clear_incoming_screen_frame();
-        crate::common::set_server_running(false);
-        crate::RendezvousMediator::restart();
-        let detail = "Harmony incoming service requested. Waiting for native screen recording to provide the first live frame.";
-        queue_event(
-            "incoming-service-requested",
-            detail,
-            "",
-        );
+        std::thread::spawn(|| {
+            let rt = hbb_common::tokio::runtime::Runtime::new().unwrap();
+            rt.block_on(crate::start_server(true, false));
+        });
+        let detail = "Harmony incoming service starting. Server thread launched, connecting to signaling servers.";
+        queue_event("incoming-service-requested", detail, "");
         json!({
             "adapter": "official-native",
             "coreReady": true,
@@ -446,7 +444,7 @@ pub fn main_start_service(
             "incomingFrameId": 0,
             "incomingFrameBytes": 0,
             "incomingFramesSeen": 0,
-            "statusSummary": "Incoming service requested",
+            "statusSummary": "Incoming service starting",
             "detailMessage": detail,
             "lastError": "",
             "sessionStage": get_session_stage(),
@@ -673,11 +671,7 @@ pub fn send_audio_frame_metadata(
 pub fn session_send_chat(content: &str) -> bool {
     let normalized = content.trim();
     if normalized.is_empty() {
-        queue_event(
-            "chat-error",
-            "failed=empty-content",
-            &get_active_peer_id(),
-        );
+        queue_event("chat-error", "failed=empty-content", &get_active_peer_id());
         return false;
     }
     let Some(session) = active_session().lock().unwrap().as_ref().cloned() else {
@@ -1637,7 +1631,7 @@ pub fn session_send_files(path: &str, to: &str, is_remote: bool) -> bool {
             "to":normalized_to,
             "is_remote":is_remote
         })
-            .to_string(),
+        .to_string(),
         &get_active_peer_id(),
     );
     true
