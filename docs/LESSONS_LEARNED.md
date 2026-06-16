@@ -2,6 +2,78 @@
 
 > 记录容易复发的构建、发布和排查问题。新增经验时优先写清楚：现象、根因、修复、以后如何避免。
 
+## 2026-06-16: OHOS 替代文件移入 `harmony_bridge/` 子目录
+
+### 现象
+
+- `rustdesk-master/src/` 下有 9 个 `*_ohos.rs` 文件和官方同名模块混在一起，难以区分哪些是官方代码、哪些是 OHOS 专属。
+- `libs/scrap/src/common/` 下有 3 个 `*_ohos.rs` 同样与官方文件混杂。
+
+### 根因
+
+- 早期开发时 OHOS 替代文件直接放在同级目录，通过 `#[path = "xxx_ohos.rs"]` 引用。
+- 随着文件增多，与官方代码的边界越来越模糊。
+
+### 修复
+
+- 将 `src/` 下 9 个 `*_ohos.rs` 移入 `src/harmony_bridge/` 目录。
+- 将 `libs/scrap/src/common/` 下 3 个 `*_ohos.rs` 移入 `libs/scrap/src/common/harmony_bridge/` 目录。
+- 更新所有 `#[path = ...]` 引用路径。
+- 新增 `docs/OHOS_CODE_MAP.md` 记录完整的 OHOS 代码分布。
+
+### 以后如何避免
+
+- 新增 OHOS 替代文件时，统一放入 `harmony_bridge/` 子目录，不要放在同级。
+- 散布在官方文件中的 `cfg(target_env = "ohos")` 条件编译块无法移入独立目录，更新源码时需逐文件合并。
+- 更新官方源码前，先备份 `harmony_bridge/` 目录和 `OHOS_CODE_MAP.md`，更新后按文档恢复。
+
+## 2026-06-16: Linux 在线构建需要独立的 OHOS SDK（Linux 版）
+
+### 现象
+
+- Windows 在线构建使用 Windows 版 OHOS SDK（含 `clang.exe`、`llvm-ar.exe` 等），无法在 Linux runner 上使用。
+- Linux 构建需要 Linux 版 OHOS SDK（含 `clang`、`llvm-ar` 等原生 ELF 二进制）。
+
+### 根因
+
+- OHOS SDK 是平台相关的：Windows SDK 的二进制是 PE 格式，Linux SDK 的二进制是 ELF 格式。
+- 当前仓库密钥 `OHOS_SDK_ZIP_URL` 指向 Windows 版 SDK，Linux 构建需要单独的密钥 `OHOS_SDK_LINUX_ZIP_URL`。
+
+### 修复
+
+- 新增 `.github/workflows/build-core-linux.yml`，使用 `ubuntu-22.04` runner。
+- Linux 构建仅手动触发（`workflow_dispatch`），不自动触发。
+- 需要在仓库密钥中设置 `OHOS_SDK_LINUX_ZIP_URL`，指向 Linux 版 OHOS Native SDK 压缩包。
+- Linux 构建发布标签格式为 `core-linux-*`，与 Windows 的 `core-*` 区分。
+- Linux 构建直接在 bash 中编译 libsodium/libvpx/libyuv/opus，不需要 MSYS2。
+
+### 以后如何避免
+
+- 不要假设 OHOS SDK 跨平台通用；Windows 和 Linux 构建需要各自平台的 SDK。
+- Linux 构建不需要 MSYS2，直接用系统 bash/perl/make 即可，构建速度更快。
+- 如果 Linux 构建失败，先检查 `OHOS_SDK_LINUX_ZIP_URL` 密钥是否已设置且 URL 有效。
+
+## 2026-06-16: GitHub Release 发布说明应默认中文
+
+### 现象
+
+- 部分 Release（如 core-80）的发布说明为英文，与项目文档的中文默认不一致。
+
+### 根因
+
+- Windows workflow 的 `softprops/action-gh-release` 未设置 `body` 字段，导致发布说明为空或英文。
+- 早期版本未统一发布说明语言。
+
+### 修复
+
+- 所有 workflow 的 Release 创建步骤现在包含中文默认发布说明模板。
+- 已将所有现有 Release 的标题和说明更新为中文。
+
+### 以后如何避免
+
+- 新建 workflow 或修改 Release 步骤时，确保 `body` 字段包含中文说明。
+- Release 标题格式统一为 `librustdesk_core 构建 {编号}`（Windows）或 `librustdesk_core Linux 构建 {编号}`（Linux）。
+
 ## 2026-06-15: OHOS share capture needs `captureRequired`, not fake `incomingReady`
 
 ### Symptom

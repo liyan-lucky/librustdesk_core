@@ -2,6 +2,8 @@
 
 > 核心项目文档。所有核心相关的架构、编译、桥接函数、调试文档均在此维护。
 
+> 2026-06-16 Linux 构建经验：新增 `.github/workflows/build-core-linux.yml`，使用 `ubuntu-22.04` runner 在线构建 `librustdesk_core.a`。仅手动触发，不自动触发。需要设置仓库密钥 `OHOS_SDK_LINUX_ZIP_URL`（Linux 版 OHOS Native SDK 下载地址）。Linux 构建不需要 MSYS2，直接用系统 bash/perl/make 编译依赖库，构建速度应快于 Windows。发布标签格式为 `core-linux-*`，与 Windows 的 `core-*` 区分。所有 Release 发布说明已统一为中文默认。
+
 > 2026-06-13 经验：如果手机端已 `session-connected` 且 `quality-status` 显示 `codec_format=VP9`，但没有 `video-frame`，先看 `CORE.md` 的 OHOS VP8/VP9 解码修复记录和 `CONNECTION_DEBUG_LOG.md`，不要只查 `session_next_rgba()`。
 
 > 2026-06-13 CI note: if the online Windows runner fails building libvpx with `<cstdint>` not found, do not fall back to MSYS2 libc++ for OHOS clang. Run `27458902852` showed MSYS2 libc++ can be too new for the SDK clang. Build only the `libvpx.a` target and manually install the public headers, because the failing C++ RTC sources are for unused `libvpxrc.a`. Do not disable libvpx VP8/VP9 encoders unless `scrap` bindings and `common/vpxcodec.rs` are changed too.
@@ -41,6 +43,7 @@
 | `WINDOWS_SERVICE_OPTIMIZATION.md` | Windows 服务优化 |
 | `FUNCTION_LOGIC_AUDIT_2026-06-05.md` | 功能逻辑审计(6月5日) |
 | `FUNCTION_LOGIC_AUDIT_2026-06-06.md` | 功能逻辑审计(6月6日) |
+| `OHOS_CODE_MAP.md` | OHOS 专属代码分布说明，便于更新官方源码 |
 
 ## 核心修改流程
 
@@ -53,6 +56,13 @@
 7. 同步 `cpp/` 文件到 HAP 项目 `entry/src/main/cpp/`（如桥接层有更新）
 
 > 发布前必须检查 `.a` 体积。当前 release 基准约 `132 MiB`；如果 GitHub Actions 产物接近 `568 MiB`，优先检查 workflow 是否误用了 Cargo `dev` profile 或保留了 debug 符号。
+
+## CI/CD 在线构建
+
+| 工作流 | 环境 | 触发方式 | 说明 |
+|--------|------|----------|------|
+| `build-core-windows.yml` | windows-2022 | push main / 手动 | 主构建，自动发布 `core-*` 标签 |
+| `build-core-linux.yml` | ubuntu-22.04 | 仅手动 | Linux 构建，发布 `core-linux-*` 标签，需设置 `OHOS_SDK_LINUX_ZIP_URL` 密钥 |
 
 ## HAP 项目（11_Rustdesk_harmonyos）文档
 

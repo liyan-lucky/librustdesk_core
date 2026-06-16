@@ -1,0 +1,478 @@
+name: 构建 librustdesk_core.a（Linux）
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Linux 环境构建核心
+    runs-on: ubuntu-22.04
+    timeout-minutes: 120
+
+    env:
+      TARGET_TRIPLE: aarch64-unknown-linux-ohos
+      RUST_TOOLCHAIN_VERSION: "1.88.0"
+      RUSTDESK_HARMONY_BUILD_DIR: ${{ github.workspace }}/_build
+      CARGO_TARGET_DIR: ${{ github.workspace }}/_build/native_rust_core/target
+      VCPKG_ROOT: ${{ github.workspace }}/_build/vcpkg
+      VCPKG_INSTALLED_ROOT: ${{ github.workspace }}/_build/vcpkg/installed
+      RUST_BACKTRACE: full
+      CARGO_BUILD_JOBS: "2"
+      RELEASE_ARTIFACT_MIN_BYTES: "100000000"
+      RELEASE_ARTIFACT_MAX_BYTES: "250000000"
+
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+
+      - name: 安装 Rust 工具链
+        uses: dtolnay/rust-toolchain@1.88.0
+        with:
+          targets: aarch64-unknown-linux-ohos
+
+      - name: 安装系统依赖
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential \
+            cmake \
+            ninja-build \
+            autoconf \
+            automake \
+            libtool \
+            pkg-config \
+            perl \
+            python3
+
+      - name: 准备构建目录
+        run: |
+          mkdir -p "$RUSTDESK_HARMONY_BUILD_DIR"
+          mkdir -p "$VCPKG_ROOT"
+          mkdir -p "$VCPKG_INSTALLED_ROOT"
+
+      - name: 下载 OpenHarmony SDK
+        env:
+          OHOS_SDK_ZIP_URL: ${{ secrets.OHOS_SDK_LINUX_ZIP_URL }}
+        run: |
+          if [ -z "$OHOS_SDK_ZIP_URL" ]; then
+            echo "错误：缺少仓库密钥 OHOS_SDK_LINUX_ZIP_URL"
+            echo "请上传 Linux 版 OHOS Native SDK 压缩包到 GitHub Release 或其他位置，并将 URL 设置为仓库密钥。"
+            exit 1
+          fi
+
+          zip_path="$RUSTDESK_HARMONY_BUILD_DIR/ohos-sdk.zip"
+          sdk_root="$RUSTDESK_HARMONY_BUILD_DIR/ohos-sdk"
+
+          curl -fSL -o "$zip_path" "$OHOS_SDK_ZIP_URL"
+          mkdir -p "$sdk_root"
+          unzip -q -o "$zip_path" -d "$sdk_root"
+
+          clang=$(find "$sdk_root" -name clang -type f | grep -E 'native/llvm/bin/clang$' | head -1)
+          if [ -z "$clang" ]; then
+            echo "错误：未找到 clang"
+            exit 1
+          fi
+
+          llvm_bin_dir=$(dirname "$clang")
+          llvm_dir=$(dirname "$llvm_bin_dir")
+          native_dir=$(dirname "$llvm_dir")
+          sdk_native_root=$(dirname "$native_dir")
+
+          if [ ! -d "$native_dir/sysroot" ]; then
+            echo "错误：未找到 sysroot，期望路径：$native_dir/sysroot"
+            exit 1
+          fi
+
+          if [ ! -d "$native_dir/llvm/lib" ]; then
+            echo "错误：未找到 llvm/lib，期望路径：$native_dir/llvm/lib"
+            exit 1
+          fi
+
+          echo "RUSTDESK_HARMONY_HOST_SDK=$sdk_native_root" >> "$GITHUB_ENV"
+          echo "OHOS_SDK_HOME=$sdk_native_root" >> "$GITHUB_ENV"
+          echo "OHOS_NDK_HOME=$sdk_native_root" >> "$GITHUB_ENV"
+
+          echo "SDK 根目录: $sdk_native_root"
+          echo "Native 目录: $native_dir"
+          ls "$native_dir"
+
+      - name: 缓存 Cargo 依赖
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            ${{ github.workspace }}/_build/native_rust_core/target
+          key: linux-ohos-cargo-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            linux-ohos-cargo-
+
+      - name: 准备 libsodium-sys 源码
+        run: |
+          registry_src="$HOME/.cargo/registry/src"
+          crate_dir="$registry_src/manual/libsodium-sys-0.2.7"
+
+          if [ ! -d "$crate_dir" ]; then
+            mkdir -p "$registry_src/manual"
+            crate_file="$RUNNER_TEMP/libsodium-sys-0.2.7.crate"
+            curl -fSL -o "$crate_file" "https://crates.io/api/v1/crates/libsodium-sys/0.2.7/download"
+            tar -xzf "$crate_file" -C "$registry_src/manual"
+          fi
+
+      - name: 编译 libopus（OHOS 交叉编译）
+        run: |
+          opus_version="1.5.2"
+          triplet="arm64-linux"
+          opus_root="$RUSTDESK_HARMONY_BUILD_DIR/opus"
+          opus_tar="$RUNNER_TEMP/opus-$opus_version.tar.gz"
+          install_root="$VCPKG_INSTALLED_ROOT/$triplet"
+          include_dir="$install_root/include"
+          lib_dir="$install_root/lib"
+
+          mkdir -p "$opus_root" "$include_dir" "$lib_dir"
+
+          curl -fSL -o "$opus_tar" "https://downloads.xiph.org/releases/opus/opus-$opus_version.tar.gz"
+          tar -xzf "$opus_tar" -C "$opus_root" --strip-components=1
+
+          sdk_llvm_bin="$RUSTDESK_HARMONY_HOST_SDK/native/llvm/bin"
+          sdk_sysroot="$RUSTDESK_HARMONY_HOST_SDK/native/sysroot"
+
+          cd "$opus_root"
+          export CC="$sdk_llvm_bin/clang"
+          export AR="$sdk_llvm_bin/llvm-ar"
+          export RANLIB="$sdk_llvm_bin/llvm-ranlib"
+          export STRIP=":"
+          export SYSROOT="$sdk_sysroot"
+          export CFLAGS="--target=aarch64-linux-ohos --sysroot=$SYSROOT -fPIC -D__MUSL__"
+          export LDFLAGS="--target=aarch64-linux-ohos --sysroot=$SYSROOT"
+          ./configure \
+            --host=aarch64-unknown-linux-gnu \
+            --prefix="$install_root" \
+            --enable-shared=no \
+            --enable-static=yes \
+            --disable-extra-programs \
+            --disable-doc
+          make -j$(nproc)
+          make install
+
+          header="$include_dir/opus/opus_multistream.h"
+          lib_a="$lib_dir/libopus.a"
+
+          if [ ! -f "$header" ]; then
+            echo "错误：opus 头文件未找到: $header"
+            exit 1
+          fi
+          if [ ! -f "$lib_a" ]; then
+            echo "错误：libopus.a 未找到: $lib_a"
+            exit 1
+          fi
+
+          echo "libopus 编译完成:"
+          ls -la "$header" "$lib_a"
+
+      - name: 编译 libvpx（OHOS 交叉编译）
+        run: |
+          version="1.15.2"
+          triplet="arm64-linux"
+          install_root="$VCPKG_INSTALLED_ROOT/$triplet"
+          include_dir="$install_root/include"
+          lib_dir="$install_root/lib"
+          source_dir="$RUSTDESK_HARMONY_BUILD_DIR/external-src/libvpx-$version"
+          archive_path="$RUSTDESK_HARMONY_BUILD_DIR/downloads/libvpx-$version.tar.gz"
+
+          required_headers="vpx/vpx_decoder.h vpx/vp8cx.h vpx/vpx_encoder.h"
+          all_headers_found=true
+          for h in $required_headers; do
+            if [ ! -f "$include_dir/$h" ]; then
+              all_headers_found=false
+              break
+            fi
+          done
+
+          if $all_headers_found && [ -f "$lib_dir/libvpx.a" ]; then
+            echo "libvpx 已存在，跳过编译"
+            exit 0
+          fi
+
+          mkdir -p "$source_dir" "$include_dir" "$lib_dir" "$(dirname "$archive_path")"
+
+          if [ ! -f "$archive_path" ]; then
+            curl -fSL -o "$archive_path" "https://github.com/webmproject/libvpx/archive/refs/tags/v$version.tar.gz"
+          fi
+          tar -xzf "$archive_path" -C "$source_dir" --strip-components=1
+
+          sdk_llvm_bin="$RUSTDESK_HARMONY_HOST_SDK/native/llvm/bin"
+          sdk_sysroot="$RUSTDESK_HARMONY_HOST_SDK/native/sysroot"
+          arch_include="$sdk_sysroot/usr/include/aarch64-linux-ohos"
+          usr_include="$sdk_sysroot/usr/include"
+
+          build_dir="$RUSTDESK_HARMONY_BUILD_DIR/external-src/libvpx-$version-build"
+          rm -rf "$build_dir"
+          mkdir -p "$build_dir"
+
+          cd "$source_dir"
+          rm -rf build-ohos
+          mkdir -p build-ohos
+          cd build-ohos
+
+          export PATH="$sdk_llvm_bin:$PATH"
+          export CC="$sdk_llvm_bin/clang"
+          export CXX="$sdk_llvm_bin/clang++"
+          export AS="$sdk_llvm_bin/clang"
+          export LD="$sdk_llvm_bin/ld.lld"
+          export AR="$sdk_llvm_bin/llvm-ar"
+          export RANLIB="$sdk_llvm_bin/llvm-ranlib"
+          export NM="$sdk_llvm_bin/llvm-nm"
+          export STRIP=":"
+          export CFLAGS="--target=aarch64-linux-ohos --sysroot=$sdk_sysroot -I$arch_include -I$usr_include -D__MUSL__ -fPIC -O2"
+          export CXXFLAGS="--target=aarch64-linux-ohos --sysroot=$sdk_sysroot -I$arch_include -I$usr_include -D__MUSL__ -fPIC -O2"
+          export LDFLAGS="--target=aarch64-linux-ohos --sysroot=$sdk_sysroot"
+
+          ../configure \
+            --target=arm64-linux-gcc \
+            --prefix="$install_root" \
+            --libdir="$install_root/lib" \
+            --enable-static \
+            --disable-shared \
+            --disable-examples \
+            --disable-tools \
+            --disable-docs \
+            --disable-unit-tests \
+            --disable-install-bins \
+            --disable-install-srcs \
+            --disable-dependency-tracking \
+            --disable-runtime-cpu-detect \
+            --enable-vp8 \
+            --enable-vp9 \
+            --enable-vp9-highbitdepth
+
+          make -j$(nproc) libvpx.a
+
+          mkdir -p "$install_root/include/vpx" "$install_root/lib/pkgconfig"
+          cp -f libvpx.a "$install_root/lib/libvpx.a"
+          for header in vp8.h vp8cx.h vp8dx.h vpx_codec.h vpx_decoder.h vpx_encoder.h vpx_ext_ratectrl.h vpx_frame_buffer.h vpx_image.h vpx_integer.h vpx_tpl.h; do
+            cp -f "../vpx/$header" "$install_root/include/vpx/$header"
+          done
+
+          echo "libvpx 编译完成:"
+          ls -la "$install_root/lib/libvpx.a"
+
+      - name: 编译 libyuv（OHOS 交叉编译）
+        run: |
+          revision="0faf8dd0e004520a61a603a4d2996d5ecc80dc3f"
+          triplet="arm64-linux"
+          install_root="$VCPKG_INSTALLED_ROOT/$triplet"
+          include_dir="$install_root/include"
+          lib_dir="$install_root/lib"
+          source_dir="$RUSTDESK_HARMONY_BUILD_DIR/external-src/libyuv-$revision"
+          archive_path="$RUSTDESK_HARMONY_BUILD_DIR/downloads/libyuv-$revision.tar.gz"
+
+          if [ -f "$include_dir/libyuv/convert_argb.h" ] && [ -f "$lib_dir/libyuv.a" ]; then
+            echo "libyuv 已存在，跳过编译"
+            exit 0
+          fi
+
+          mkdir -p "$source_dir" "$(dirname "$archive_path")"
+
+          if [ ! -f "$archive_path" ]; then
+            curl -fSL -o "$archive_path" "https://github.com/lemenkov/libyuv/archive/$revision.tar.gz"
+          fi
+          tar -xzf "$archive_path" -C "$source_dir" --strip-components=1
+
+          sdk_llvm_bin="$RUSTDESK_HARMONY_HOST_SDK/native/llvm/bin"
+          sdk_sysroot="$RUSTDESK_HARMONY_HOST_SDK/native/sysroot"
+
+          build_dir="$RUSTDESK_HARMONY_BUILD_DIR/external-src/libyuv-$revision-build"
+          rm -rf "$build_dir"
+          mkdir -p "$build_dir" "$include_dir" "$lib_dir"
+
+          c_flags="--target=aarch64-linux-ohos --sysroot=$sdk_sysroot -D__MUSL__ -fPIC -O2"
+
+          cmake \
+            -S "$source_dir" \
+            -B "$build_dir" \
+            -G Ninja \
+            -DCMAKE_SYSTEM_NAME=Linux \
+            -DCMAKE_SYSTEM_PROCESSOR=aarch64 \
+            -DCMAKE_TRY_COMPILE_TARGET_TYPE=STATIC_LIBRARY \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_C_COMPILER="$sdk_llvm_bin/clang" \
+            -DCMAKE_CXX_COMPILER="$sdk_llvm_bin/clang++" \
+            -DCMAKE_AR="$sdk_llvm_bin/llvm-ar" \
+            -DCMAKE_RANLIB="$sdk_llvm_bin/llvm-ranlib" \
+            -DCMAKE_C_FLAGS="$c_flags" \
+            -DCMAKE_CXX_FLAGS="$c_flags" \
+            -DCMAKE_EXE_LINKER_FLAGS="--target=aarch64-linux-ohos --sysroot=$sdk_sysroot" \
+            -DCMAKE_POSITION_INDEPENDENT_CODE=ON \
+            -DCMAKE_DISABLE_FIND_PACKAGE_JPEG=ON \
+            -DTEST=OFF \
+            -DCMAKE_INSTALL_PREFIX="$install_root"
+
+          cmake --build "$build_dir" --config Release --target yuv --parallel $(nproc)
+
+          built_lib="$build_dir/libyuv.a"
+          if [ ! -f "$built_lib" ]; then
+            echo "错误：libyuv 编译完成但未生成 $built_lib"
+            exit 1
+          fi
+
+          cp -f "$built_lib" "$lib_dir/libyuv.a"
+          mkdir -p "$include_dir/libyuv"
+          cp -rf "$source_dir/include/libyuv/"* "$include_dir/libyuv/"
+
+          echo "libyuv 编译完成:"
+          ls -la "$lib_dir/libyuv.a"
+
+      - name: 编译 libsodium（OHOS 交叉编译）
+        run: |
+          target_triple="$TARGET_TRIPLE"
+          install_dir="$RUSTDESK_HARMONY_BUILD_DIR/build/libsodium/$target_triple"
+          lib_dir="$install_dir/lib"
+          final_lib="$lib_dir/liblibsodium.a"
+
+          if [ -f "$final_lib" ]; then
+            echo "libsodium 已存在，跳过编译"
+            exit 0
+          fi
+
+          registry_src="$HOME/.cargo/registry/src"
+          crate_dir="$registry_src/manual/libsodium-sys-0.2.7"
+          source_dir="$crate_dir/libsodium"
+
+          if [ ! -d "$source_dir" ]; then
+            echo "错误：libsodium-sys 源码未找到: $source_dir"
+            exit 1
+          fi
+
+          work_root="$RUSTDESK_HARMONY_BUILD_DIR/external-src/libsodium-$target_triple"
+          rm -rf "$work_root" "$install_dir"
+          mkdir -p "$work_root/source" "$install_dir"
+          cp -rf "$source_dir" "$work_root/source/libsodium"
+
+          sdk_llvm_bin="$RUSTDESK_HARMONY_HOST_SDK/native/llvm/bin"
+          sdk_sysroot="$RUSTDESK_HARMONY_HOST_SDK/native/sysroot"
+          arch_include="$sdk_sysroot/usr/include/aarch64-linux-ohos"
+          usr_include="$sdk_sysroot/usr/include"
+
+          cd "$work_root/source/libsodium"
+          export PATH="$sdk_llvm_bin:$PATH"
+          export CC="$sdk_llvm_bin/clang"
+          export LD="$sdk_llvm_bin/ld.lld"
+          export AR="$sdk_llvm_bin/llvm-ar"
+          export RANLIB="$sdk_llvm_bin/llvm-ranlib"
+          export NM="$sdk_llvm_bin/llvm-nm"
+          export STRIP=":"
+          export LDCONFIG=":"
+          export CFLAGS="--target=aarch64-linux-ohos --sysroot=$sdk_sysroot -I$arch_include -I$usr_include -D__MUSL__"
+          ./configure \
+            --host=aarch64-unknown-linux-gnu \
+            --prefix="$install_dir" \
+            --libdir="$install_dir/lib" \
+            --enable-shared=no
+          make -j$(nproc) all
+          make install
+          cp -f "$install_dir/lib/libsodium.a" "$install_dir/lib/liblibsodium.a"
+
+          if [ ! -f "$final_lib" ]; then
+            echo "错误：libsodium 编译完成但未生成 $final_lib"
+            exit 1
+          fi
+
+          echo "libsodium 编译完成:"
+          ls -la "$final_lib"
+
+      - name: 构建 librustdesk_core.a
+        run: |
+          chmod +x scripts/build_native_bridge.sh
+          chmod +x scripts/_ohos-sdk-env.sh
+          chmod +x scripts/aarch64-unknown-linux-ohos-clang.sh
+          chmod +x scripts/aarch64-unknown-linux-ohos-clang++.sh
+          chmod +x scripts/ohos-llvm-ar.sh
+
+          export SODIUM_LIB_DIR="$RUSTDESK_HARMONY_BUILD_DIR/build/libsodium/$TARGET_TRIPLE/lib"
+
+          ./scripts/build_native_bridge.sh "$TARGET_TRIPLE" release
+
+          built_lib="./native_rust_core/target/$TARGET_TRIPLE/release/librustdesk_harmony_bridge.a"
+          if [ ! -f "$built_lib" ]; then
+            built_lib="./native_rust_core/target/$TARGET_TRIPLE/release/librustdesk_harmony_bridge.a"
+            if [ ! -f "$built_lib" ]; then
+              echo "错误：构建完成但未找到静态库"
+              find ./native_rust_core/target -name "*.a" -type f
+              exit 1
+            fi
+          fi
+
+          cp -f "$built_lib" "./librustdesk_core.a"
+
+      - name: 上传调试日志
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-build-debug-logs
+          path: |
+            build_debug_*.log
+            cargo_build_*.log
+            build_env_*.log
+          if-no-files-found: ignore
+
+      - name: 验证最终产物
+        run: |
+          artifact="./librustdesk_core.a"
+
+          if [ ! -f "$artifact" ]; then
+            echo "错误：librustdesk_core.a 未生成"
+            exit 1
+          fi
+
+          echo "===== 最终产物 ====="
+          ls -la "$artifact"
+
+          artifact_size=$(stat -c%s "$artifact")
+          min_bytes=$RELEASE_ARTIFACT_MIN_BYTES
+          max_bytes=$RELEASE_ARTIFACT_MAX_BYTES
+
+          if [ "$artifact_size" -lt "$min_bytes" ] || [ "$artifact_size" -gt "$max_bytes" ]; then
+            echo "错误：librustdesk_core.a 体积异常：$artifact_size bytes，期望范围 $min_bytes ~ $max_bytes bytes"
+            exit 1
+          fi
+
+      - name: 上传 Actions 产物
+        uses: actions/upload-artifact@v4
+        with:
+          name: librustdesk_core_linux
+          path: librustdesk_core.a
+          if-no-files-found: error
+
+      - name: 检查发布文件
+        run: |
+          ls -la ./librustdesk_core.a
+          echo "SHA256:"
+          sha256sum ./librustdesk_core.a
+
+      - name: 创建 GitHub Release
+        if: success()
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: core-linux-${{ github.run_number }}
+          name: "librustdesk_core Linux 构建 ${{ github.run_number }}"
+          body: |
+            中文更新说明：
+
+            Linux 环境在线构建 librustdesk_core.a。
+
+            构建环境：ubuntu-22.04
+            Rust 工具链：1.88.0
+            目标平台：aarch64-unknown-linux-ohos
+            构建配置：Cargo release profile
+
+            线上产物：
+            - 标签：core-linux-${{ github.run_number }}
+            - Asset：librustdesk_core.a
+          files: librustdesk_core.a
+          overwrite_files: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

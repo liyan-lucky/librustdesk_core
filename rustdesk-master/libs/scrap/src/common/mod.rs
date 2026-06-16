@@ -28,8 +28,8 @@ cfg_if! {
         mod dxgi;
         pub use self::dxgi::*;
     } else if #[cfg(target_env = "ohos")] {
-        mod ohos;
-        pub use self::ohos::*;
+        mod harmony_bridge;
+        pub use self::harmony_bridge::ohos::*;
     } else if #[cfg(target_os = "android")] {
         mod android;
         pub use self::android::*;
@@ -41,7 +41,7 @@ cfg_if! {
 #[cfg(not(target_env = "ohos"))]
 pub mod codec;
 #[cfg(target_env = "ohos")]
-#[path = "codec_ohos.rs"]
+#[path = "harmony_bridge/codec_ohos.rs"]
 pub mod codec;
 pub mod convert;
 #[cfg(feature = "hwcodec")]
@@ -62,7 +62,7 @@ pub mod camera;
 #[cfg(not(target_env = "ohos"))]
 pub mod record;
 #[cfg(target_env = "ohos")]
-#[path = "record_ohos.rs"]
+#[path = "harmony_bridge/record_ohos.rs"]
 pub mod record;
 mod vpx;
 

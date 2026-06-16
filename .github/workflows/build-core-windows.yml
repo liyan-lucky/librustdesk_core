@@ -1,4 +1,4 @@
-name: Build librustdesk_core.a
+name: 构建 librustdesk_core.a（Windows）
 
 on:
   push:
@@ -12,7 +12,7 @@ permissions:
 
 jobs:
   build:
-    name: Build core for HarmonyOS
+    name: Windows 环境构建核心
     runs-on: windows-2022
     timeout-minutes: 120
 
@@ -29,15 +29,15 @@ jobs:
       RELEASE_ARTIFACT_MAX_BYTES: "250000000"
 
     steps:
-      - name: Checkout
+      - name: 检出代码
         uses: actions/checkout@v4
 
-      - name: Install Rust
+      - name: 安装 Rust 工具链
         uses: dtolnay/rust-toolchain@1.88.0
         with:
           targets: aarch64-unknown-linux-ohos
 
-      - name: Install MSYS2
+      - name: 安装 MSYS2
         uses: msys2/setup-msys2@v2
         with:
           install: >-
@@ -49,14 +49,14 @@ jobs:
             libtool
             pkgconf
 
-      - name: Prepare build directories
+      - name: 准备构建目录
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force -Path "$env:RUSTDESK_HARMONY_BUILD_DIR" | Out-Null
           New-Item -ItemType Directory -Force -Path "$env:VCPKG_ROOT" | Out-Null
           New-Item -ItemType Directory -Force -Path "$env:VCPKG_INSTALLED_ROOT" | Out-Null
 
-      - name: Download OpenHarmony SDK
+      - name: 下载 OpenHarmony SDK
         shell: pwsh
         env:
           OHOS_SDK_ZIP_URL: ${{ secrets.OHOS_SDK_ZIP_URL }}
@@ -101,7 +101,7 @@ jobs:
           Write-Host "Native dir: $nativeDir"
           Get-ChildItem "$nativeDir" | Select-Object Name
 
-      - name: Cache Cargo
+      - name: 缓存 Cargo
         uses: actions/cache@v4
         with:
           path: |
@@ -112,7 +112,7 @@ jobs:
           restore-keys: |
             windows-ohos-cargo-
 
-      - name: Prepare libsodium-sys source
+      - name: 准备 libsodium-sys 源码
         shell: pwsh
         run: |
           $registrySrc = Join-Path $env:CARGO_HOME "registry\src\manual"
@@ -125,7 +125,7 @@ jobs:
             tar -xzf $crateFile -C $registrySrc
           }
 
-      - name: Prepare libopus for magnum-opus
+      - name: 编译 libopus（OHOS 交叉编译）
         shell: pwsh
         run: |
           $opusVersion = "1.5.2"
@@ -203,7 +203,7 @@ jobs:
           Write-Host "libopus prepared:"
           Get-Item $header, $libA | Format-List FullName,Length
 
-      - name: Build librustdesk_core.a
+      - name: 构建 librustdesk_core.a
         shell: pwsh
         run: |
           & powershell -ExecutionPolicy Bypass -File .\scripts\build_native_bridge.ps1 -TargetTriple "$env:TARGET_TRIPLE" -Profile release
@@ -219,7 +219,7 @@ jobs:
 
           Copy-Item -LiteralPath $builtLib -Destination ".\librustdesk_core.a" -Force
 
-      - name: Upload debug logs
+      - name: 上传调试日志
         if: always()
         uses: actions/upload-artifact@v4
         with:
@@ -231,7 +231,7 @@ jobs:
             _build/build-native-bridge-*.cmd
           if-no-files-found: ignore
 
-      - name: Verify final artifact
+      - name: 验证最终产物
         shell: pwsh
         run: |
           $artifact = ".\librustdesk_core.a"
@@ -250,14 +250,14 @@ jobs:
             throw "Unexpected librustdesk_core.a size: $($artifactItem.Length) bytes. Expected release artifact between $minBytes and $maxBytes bytes; check Cargo profile before publishing."
           }
 
-      - name: Upload Actions artifact
+      - name: 上传 Actions 产物
         uses: actions/upload-artifact@v4
         with:
           name: librustdesk_core
           path: librustdesk_core.a
           if-no-files-found: error
           
-      - name: Check release file
+      - name: 检查发布文件
         shell: pwsh
         run: |
           Get-Item ".\librustdesk_core.a" | Format-List Name,Length,FullName
@@ -265,12 +265,25 @@ jobs:
           Write-Host "SHA256:"
           Get-FileHash ".\librustdesk_core.a" -Algorithm SHA256
 
-      - name: Create GitHub Release
+      - name: 创建 GitHub Release
         if: success()
         uses: softprops/action-gh-release@v2
         with:
           tag_name: core-${{ github.run_number }}
-          name: librustdesk_core Build ${{ github.run_number }}
+          name: "librustdesk_core 构建 ${{ github.run_number }}"
+          body: |
+            中文更新说明：
+
+            Windows 环境在线构建 librustdesk_core.a。
+
+            构建环境：windows-2022
+            Rust 工具链：1.88.0
+            目标平台：aarch64-unknown-linux-ohos
+            构建配置：Cargo release profile
+
+            线上产物：
+            - 标签：core-${{ github.run_number }}
+            - Asset：librustdesk_core.a
           files: librustdesk_core.a
           overwrite_files: true
         env:

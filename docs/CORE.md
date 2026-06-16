@@ -144,6 +144,13 @@ HAP:
 
 当前核心构建的权威来源是独立项目 `%VSCODE_ROOT%\13_librustdesk_core`，11 项目只消费构建产物。
 
+### CI/CD 在线构建
+
+| 工作流 | 环境 | 触发方式 | 标签格式 | 说明 |
+|--------|------|----------|----------|------|
+| `build-core-windows.yml` | windows-2022 | push main / 手动 | `core-*` | 主构建 |
+| `build-core-linux.yml` | ubuntu-22.04 | 仅手动 | `core-linux-*` | Linux 构建，需设置 `OHOS_SDK_LINUX_ZIP_URL` 密钥 |
+
 本地重编：
 
 ```powershell

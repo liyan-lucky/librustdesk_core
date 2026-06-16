@@ -1,13 +1,13 @@
 #[cfg(not(target_env = "ohos"))]
 mod keyboard;
 #[cfg(target_env = "ohos")]
-#[path = "keyboard_ohos.rs"]
+#[path = "harmony_bridge/keyboard_ohos.rs"]
 mod keyboard;
 /// cbindgen:ignore
 #[cfg(not(target_env = "ohos"))]
 pub mod platform;
 #[cfg(target_env = "ohos")]
-#[path = "platform_ohos.rs"]
+#[path = "harmony_bridge/platform_ohos.rs"]
 pub mod platform;
 #[cfg(not(any(target_os = "android", target_os = "ios", target_env = "ohos")))]
 pub use platform::{
@@ -18,7 +18,7 @@ pub use platform::{
 /// cbindgen:ignore
 mod server;
 #[cfg(target_env = "ohos")]
-#[path = "server_ohos.rs"]
+#[path = "harmony_bridge/server_ohos.rs"]
 mod server;
 #[cfg(not(target_os = "ios"))]
 pub use self::server::*;
@@ -27,7 +27,7 @@ mod lan;
 #[cfg(not(any(target_os = "ios", target_env = "ohos")))]
 mod rendezvous_mediator;
 #[cfg(target_env = "ohos")]
-#[path = "rendezvous_mediator_ohos.rs"]
+#[path = "harmony_bridge/rendezvous_mediator_ohos.rs"]
 mod rendezvous_mediator;
 #[cfg(not(target_os = "ios"))]
 pub use self::rendezvous_mediator::*;
@@ -36,7 +36,7 @@ pub mod common;
 #[cfg(not(any(target_os = "ios", target_env = "ohos")))]
 pub mod ipc;
 #[cfg(target_env = "ohos")]
-#[path = "ipc_ohos.rs"]
+#[path = "harmony_bridge/ipc_ohos.rs"]
 pub mod ipc;
 #[cfg(not(any(
     target_os = "android",
@@ -61,10 +61,10 @@ pub mod cli;
 #[cfg(not(any(target_os = "ios", target_env = "ohos")))]
 mod clipboard;
 #[cfg(target_env = "ohos")]
-#[path = "clipboard_ohos.rs"]
+#[path = "harmony_bridge/clipboard_ohos.rs"]
 mod clipboard;
 #[cfg(target_env = "ohos")]
-#[path = "clipboard_master_ohos.rs"]
+#[path = "harmony_bridge/clipboard_master_ohos.rs"]
 mod clipboard_master;
 #[cfg(not(any(target_os = "android", target_os = "ios", target_env = "ohos", feature = "cli")))]
 pub mod core_main;
@@ -91,7 +91,7 @@ mod ui_cm_interface;
 #[cfg(not(target_env = "ohos"))]
 mod ui_interface;
 #[cfg(target_env = "ohos")]
-#[path = "ui_interface_ohos.rs"]
+#[path = "harmony_bridge/ui_interface_ohos.rs"]
 mod ui_interface;
 mod ui_session_interface;
 
@@ -100,7 +100,7 @@ mod hbbs_http;
 #[cfg(all(any(target_os = "windows", target_os = "linux", target_os = "macos"), not(target_env = "ohos")))]
 pub mod clipboard_file;
 #[cfg(target_env = "ohos")]
-#[path = "clipboard_file_ohos.rs"]
+#[path = "harmony_bridge/clipboard_file_ohos.rs"]
 pub mod clipboard_file;
 
 pub mod privacy_mode;
