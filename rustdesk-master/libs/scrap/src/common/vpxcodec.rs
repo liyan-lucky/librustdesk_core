@@ -231,6 +231,17 @@ impl EncoderApi for VpxEncoder {
 }
 
 impl VpxEncoder {
+    pub fn codec_id(&self) -> VpxVideoCodecId {
+        self.id
+    }
+
+    pub fn set_bitrate(&mut self, bitrate: u32) -> ResultType<()> {
+        let mut c = unsafe { *self.ctx.config.enc.to_owned() };
+        c.rc_target_bitrate = bitrate;
+        call_vpx!(vpx_codec_enc_config_set(&mut self.ctx, &c));
+        Ok(())
+    }
+
     pub fn encode<'a>(
         &'a mut self,
         pts: i64,

@@ -32,10 +32,17 @@ impl ConnInner {
     pub fn new(id: i32, tx: Option<Sender>, tx_video: Option<Sender>) -> Self {
         Self { id, tx, tx_video }
     }
+
+    pub fn id(&self) -> i32 {
+        self.id
+    }
 }
 
+type ConnMap = std::collections::HashMap<i32, ConnInner>;
+
 pub struct Server {
-    pub id_count: i32,
+    connections: ConnMap,
+    id_count: i32,
 }
 
 pub type ServerPtr = std::sync::Arc<std::sync::RwLock<Server>>;
@@ -48,11 +55,28 @@ impl Server {
     }
 
     pub fn subscribe(&mut self, _name: &str, _conn: ConnInner, _sub: bool) {}
+
+    pub fn add_connection(&mut self, conn: ConnInner) {
+        self.connections.insert(conn.id(), conn);
+    }
+
+    pub fn remove_connection(&mut self, conn: &ConnInner) {
+        self.connections.remove(&conn.id());
+    }
 }
 
 lazy_static::lazy_static! {
-    pub static ref CLIENT_SERVER: std::sync::Arc<std::sync::RwLock<Server>> =
-        std::sync::Arc::new(std::sync::RwLock::new(Server { id_count: 0 }));
+    pub static ref CLIENT_SERVER: ServerPtr =
+        std::sync::Arc::new(std::sync::RwLock::new(Server::new()));
+}
+
+impl Server {
+    pub fn new() -> Self {
+        Server {
+            connections: ConnMap::new(),
+            id_count: hbb_common::rand::random::<i32>() % 1000 + 1000,
+        }
+    }
 }
 
 #[derive(serde_derive::Serialize)]
@@ -85,3 +109,38 @@ pub async fn start_server(is_server: bool, _no_server: bool) {
 }
 
 pub async fn start_ipc_url_server() {}
+
+pub async fn accept_connection(
+    server: ServerPtr,
+    socket: hbb_common::stream::Stream,
+    peer_addr: std::net::SocketAddr,
+    secure: bool,
+) {
+    hbb_common::log::info!("OHOS accept_connection from {}, secure: {}", peer_addr, secure);
+    crate::harmony_bridge::core::queue_event(
+        "accept-connection",
+        &format!("from {} secure={}", peer_addr, secure),
+        "",
+    );
+    let id = server.write().unwrap().get_new_id();
+    hbb_common::log::info!("OHOS assigned connection id: {}", id);
+}
+
+pub async fn create_relay_connection(
+    server: ServerPtr,
+    relay_server: String,
+    uuid: String,
+    peer_addr: std::net::SocketAddr,
+    secure: bool,
+    ipv4: bool,
+) {
+    hbb_common::log::info!(
+        "OHOS create_relay_connection to relay={}, peer={:?}, uuid={}, secure={}, ipv4={}",
+        relay_server, peer_addr, uuid, secure, ipv4
+    );
+    crate::harmony_bridge::core::queue_event(
+        "relay-connection",
+        &format!("relay={} peer={:?}", relay_server, peer_addr),
+        "",
+    );
+}

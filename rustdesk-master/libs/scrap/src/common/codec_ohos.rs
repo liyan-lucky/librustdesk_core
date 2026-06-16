@@ -1,6 +1,8 @@
 use std::sync::{Arc, Mutex};
 
 use hbb_common::{
+    anyhow::{anyhow, Context},
+    bytes::Bytes,
     log,
     message_proto::{
         supported_decoding::PreferCodec, video_frame, Chroma, EncodedVideoFrame,
@@ -10,7 +12,7 @@ use hbb_common::{
 };
 
 use super::{
-    vpxcodec::{self, VpxDecoder, VpxDecoderConfig, VpxEncoderConfig, VpxVideoCodecId},
+    vpxcodec::{self, VpxDecoder, VpxDecoderConfig, VpxEncoder, VpxEncoderConfig, VpxVideoCodecId},
     GoogleImage,
 };
 use crate::{CodecFormat, EncodeInput, EncodeYuvFormat, ImageRgb, ImageTexture};
@@ -42,7 +44,9 @@ pub trait EncoderApi {
     fn disable(&self);
 }
 
-pub struct Encoder;
+pub struct Encoder {
+    vpx: VpxEncoder,
+}
 
 pub struct Decoder {
     format: CodecFormat,
@@ -59,7 +63,26 @@ pub enum EncodingUpdate {
     Check,
 }
 
+fn create_frame(frame: &vpxcodec::EncodeFrame) -> EncodedVideoFrame {
+    EncodedVideoFrame {
+        data: Bytes::from(frame.data.to_vec()),
+        key: frame.key,
+        pts: frame.pts,
+        ..Default::default()
+    }
+}
+
 impl Encoder {
+    pub fn new(config: EncoderCfg, i444: bool) -> ResultType<Encoder> {
+        log::info!("OHOS new encoder: {config:?}, i444: {i444}");
+        let vpx = VpxEncoder::new(config, i444)?;
+        *ENCODE_CODEC_FORMAT.lock().unwrap() = match vpx.codec_id() {
+            VpxVideoCodecId::VP8 => CodecFormat::VP8,
+            VpxVideoCodecId::VP9 => CodecFormat::VP9,
+        };
+        Ok(Encoder { vpx })
+    }
+
     pub fn usable_encoding() -> SupportedEncoding {
         SupportedEncoding {
             vp8: true,
@@ -70,7 +93,36 @@ impl Encoder {
         }
     }
 
-    pub fn update(_update: EncodingUpdate) {}
+    pub fn update(update: EncodingUpdate) {
+        log::info!("OHOS update:{:?}", update);
+        let mut decodings = PEER_DECODINGS.lock().unwrap();
+        match update {
+            EncodingUpdate::Update(id, decoding) => {
+                decodings.insert(id, decoding);
+            }
+            EncodingUpdate::Remove(id) => {
+                decodings.remove(&id);
+            }
+            EncodingUpdate::NewOnlyVP9(id) => {
+                decodings.insert(
+                    id,
+                    SupportedDecoding {
+                        ability_vp9: 1,
+                        prefer: PreferCodec::VP9.into(),
+                        ..Default::default()
+                    },
+                );
+            }
+            EncodingUpdate::Check => {}
+        }
+        let decodings = decodings.clone();
+        let mut encoding = Self::supported_encoding();
+        let decodable_vp8 = decodings.iter().all(|d| d.1.ability_vp8 > 0);
+        if !decodable_vp8 {
+            encoding.vp8 = false;
+        }
+        *USABLE_ENCODING.lock().unwrap() = Some(encoding);
+    }
 
     pub fn supported_encoding() -> SupportedEncoding {
         SupportedEncoding {
@@ -82,16 +134,28 @@ impl Encoder {
         }
     }
 
-    pub fn set_bitrate(&mut self, _bitrate: u32) {}
+    pub fn set_bitrate(&mut self, bitrate: u32) {
+        let _ = self.vpx.set_bitrate(bitrate);
+    }
 
-    pub fn encode_to_message(
-        &mut self,
-        _frame: EncodeInput<'_>,
-        _ms: i64,
-    ) -> ResultType<VideoFrame> {
-        Err(hbb_common::anyhow::anyhow!(
-            "encoding not supported on ohos"
-        ))
+    pub fn encode_to_message(&mut self, frame: EncodeInput<'_>, ms: i64) -> ResultType<VideoFrame> {
+        let mut frames = Vec::new();
+        for ref f in self
+            .vpx
+            .encode(ms, frame.yuv()?, crate::STRIDE_ALIGN)
+            .with_context(|| "Failed to encode")?
+        {
+            frames.push(create_frame(f));
+        }
+        for ref f in self.vpx.flush().with_context(|| "Failed to flush")? {
+            frames.push(create_frame(f));
+        }
+
+        if !frames.is_empty() {
+            Ok(VpxEncoder::create_video_frame(self.vpx.codec_id(), frames))
+        } else {
+            Err(anyhow!("no valid frame"))
+        }
     }
 }
 
@@ -176,19 +240,17 @@ impl Decoder {
                 if let Some(vp8) = &mut self.vp8 {
                     Self::handle_vpxs_video_frame(vp8, vp8s, rgb, chroma)
                 } else {
-                    Err(hbb_common::anyhow::anyhow!("vp8 decoder not available on ohos"))
+                    Err(anyhow!("vp8 decoder not available on ohos"))
                 }
             }
             video_frame::Union::Vp9s(vp9s) => {
                 if let Some(vp9) = &mut self.vp9 {
                     Self::handle_vpxs_video_frame(vp9, vp9s, rgb, chroma)
                 } else {
-                    Err(hbb_common::anyhow::anyhow!("vp9 decoder not available on ohos"))
+                    Err(anyhow!("vp9 decoder not available on ohos"))
                 }
             }
-            _ => Err(hbb_common::anyhow::anyhow!(
-                "unsupported video frame type on ohos"
-            )),
+            _ => Err(anyhow!("unsupported video frame type on ohos")),
         }
     }
 
@@ -204,19 +266,17 @@ impl Decoder {
                 if let Some(vp8) = &mut self.vp8 {
                     Self::handle_vpxs_video_frame(vp8, &frames, rgb, &mut chroma)
                 } else {
-                    Err(hbb_common::anyhow::anyhow!("vp8 decoder not available on ohos"))
+                    Err(anyhow!("vp8 decoder not available on ohos"))
                 }
             }
             CodecFormat::VP9 => {
                 if let Some(vp9) = &mut self.vp9 {
                     Self::handle_vpxs_video_frame(vp9, &frames, rgb, &mut chroma)
                 } else {
-                    Err(hbb_common::anyhow::anyhow!("vp9 decoder not available on ohos"))
+                    Err(anyhow!("vp9 decoder not available on ohos"))
                 }
             }
-            _ => Err(hbb_common::anyhow::anyhow!(
-                "unsupported decoder format on ohos"
-            )),
+            _ => Err(anyhow!("unsupported decoder format on ohos")),
         }
     }
 
@@ -247,8 +307,37 @@ impl Decoder {
     }
 }
 
-pub fn base_bitrate(_w: u32, _h: u32) -> u32 {
-    0
+pub fn base_bitrate(width: u32, height: u32) -> u32 {
+    const RESOLUTION_PRESETS: &[(u32, u32, u32)] = &[
+        (640, 480, 400),
+        (800, 600, 500),
+        (1024, 768, 800),
+        (1280, 720, 1000),
+        (1366, 768, 1100),
+        (1440, 900, 1300),
+        (1600, 900, 1500),
+        (1920, 1080, 2073),
+        (2048, 1080, 2200),
+        (2560, 1440, 3000),
+        (3440, 1440, 4000),
+        (3840, 2160, 5000),
+        (7680, 4320, 12000),
+    ];
+    let pixels = width * height;
+
+    let (preset_pixels, preset_bitrate) = RESOLUTION_PRESETS
+        .iter()
+        .map(|(w, h, bitrate)| (w * h, bitrate))
+        .min_by_key(|(preset_pixels, _)| {
+            if *preset_pixels >= pixels {
+                preset_pixels - pixels
+            } else {
+                pixels - preset_pixels
+            }
+        })
+        .unwrap_or(((1920 * 1080) as u32, &2073));
+
+    (*preset_bitrate as f32 * (pixels as f32 / preset_pixels as f32)).round() as u32
 }
 
 pub fn codec_thread_num(limit: usize) -> usize {
@@ -265,14 +354,38 @@ pub fn enable_directx_capture() -> bool {
 
 pub fn test_av1() {}
 
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub const BR_BEST: f32 = 1.5;
+pub const BR_BALANCED: f32 = 0.67;
+pub const BR_SPEED: f32 = 0.5;
+
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub enum Quality {
-    #[default]
-    Balance,
     Best,
-    Speed,
+    Balanced,
+    Low,
+    Custom(f32),
 }
 
-pub const BR_BALANCED: u32 = 0;
-pub const BR_BEST: u32 = 0;
-pub const BR_SPEED: u32 = 0;
+impl Default for Quality {
+    fn default() -> Self {
+        Self::Balanced
+    }
+}
+
+impl Quality {
+    pub fn is_custom(&self) -> bool {
+        match self {
+            Quality::Custom(_) => true,
+            _ => false,
+        }
+    }
+
+    pub fn ratio(&self) -> f32 {
+        match self {
+            Quality::Best => BR_BEST,
+            Quality::Balanced => BR_BALANCED,
+            Quality::Low => BR_SPEED,
+            Quality::Custom(v) => *v,
+        }
+    }
+}

@@ -11,7 +11,7 @@ use hbb_common::{
     config::{self, option2bool, Config, CONNECT_TIMEOUT, RENDEZVOUS_PORT},
     futures::future::join_all,
     log,
-    protobuf::Message as _,
+    protobuf::{Enum as _, Message as _},
     rendezvous_proto::*,
     sleep,
     socket_client::{self, new_udp_for},
@@ -281,13 +281,6 @@ impl RendezvousMediator {
                     allow_err!(rz.handle_request_relay(rr, server).await);
                 });
             }
-            Some(rendezvous_message::Union::RelayResponse(rr)) => {
-                let rz = self.clone();
-                let server = server.clone();
-                tokio::spawn(async move {
-                    allow_err!(rz.handle_relay_response(rr, server).await);
-                });
-            }
             Some(rendezvous_message::Union::ConfigureUpdate(cu)) => {
                 Config::set_option("rendezvous-servers".to_owned(), cu.rendezvous_servers.join(","));
                 Config::set_serial(cu.serial);
@@ -305,44 +298,151 @@ impl RendezvousMediator {
         Ok(())
     }
 
-    async fn handle_punch_hole(&self, ph: PunchHole, _server: ServerPtr) -> ResultType<()> {
-        let addr_str = String::from_utf8_lossy(&ph.socket_addr);
-        log::info!("OHOS received PunchHole from {}", addr_str);
+    async fn handle_punch_hole(&self, ph: PunchHole, server: ServerPtr) -> ResultType<()> {
+        let peer_addr = hbb_common::AddrMangle::decode(&ph.socket_addr);
+        log::info!("OHOS received PunchHole from {:?}", peer_addr);
         crate::harmony_bridge::core::queue_event(
             "incoming-connection",
-            &format!("PunchHole request from {}", addr_str),
+            &format!("PunchHole request from {:?}", peer_addr),
             "",
         );
+
+        let relay = hbb_common::config::Config::is_proxy() || ph.force_relay;
+        let relay_server = self.get_relay_server(ph.relay_server);
+
+        if ph.nat_type.enum_value() == Ok(hbb_common::protos::rendezvous::NatType::SYMMETRIC)
+            || hbb_common::config::Config::get_nat_type()
+                == hbb_common::protos::rendezvous::NatType::SYMMETRIC as i32
+            || relay
+        {
+            let uuid = hbb_common::rand::random::<i32>().to_string();
+            return self
+                .create_relay(
+                    ph.socket_addr.into(),
+                    relay_server,
+                    uuid,
+                    server,
+                    true,
+                    true,
+                    Default::default(),
+                )
+                .await;
+        }
+
+        let nat_type = hbb_common::protobuf::Enum::from_i32(
+            hbb_common::config::Config::get_nat_type(),
+        )
+        .unwrap_or(hbb_common::protos::rendezvous::NatType::UNKNOWN_NAT);
+        let msg_punch = PunchHoleSent {
+            socket_addr: ph.socket_addr,
+            id: hbb_common::config::Config::get_id(),
+            relay_server,
+            nat_type: nat_type.into(),
+            version: crate::VERSION.to_owned(),
+            ..Default::default()
+        };
+
+        log::info!("OHOS punch tcp hole to {:?}", peer_addr);
+        let mut socket = {
+            let socket =
+                hbb_common::socket_client::connect_tcp(&*self.host, CONNECT_TIMEOUT).await?;
+            let local_addr = socket.local_addr();
+            allow_err!(
+                hbb_common::socket_client::connect_tcp_local(peer_addr, Some(local_addr), 30).await
+            );
+            socket
+        };
+        let mut msg_out = Message::new();
+        msg_out.set_punch_hole_sent(msg_punch);
+        let bytes = msg_out.write_to_bytes()?;
+        socket.send_raw(bytes).await?;
+        crate::accept_connection(server, socket, peer_addr, true).await;
         Ok(())
     }
 
-    async fn handle_request_relay(&self, rr: RequestRelay, _server: ServerPtr) -> ResultType<()> {
-        let addr_str = String::from_utf8_lossy(&rr.socket_addr);
-        log::info!("OHOS received RequestRelay from {}", addr_str);
+    async fn handle_request_relay(&self, rr: RequestRelay, server: ServerPtr) -> ResultType<()> {
+        let peer_addr = hbb_common::AddrMangle::decode(&rr.socket_addr);
+        log::info!("OHOS received RequestRelay from {:?}", peer_addr);
         crate::harmony_bridge::core::queue_event(
             "incoming-connection",
-            &format!("Relay request from {}", addr_str),
+            &format!("Relay request from {:?}", peer_addr),
             "",
         );
+
+        self.create_relay(
+            rr.socket_addr.into(),
+            rr.relay_server,
+            rr.uuid,
+            server,
+            rr.secure,
+            false,
+            Default::default(),
+        )
+        .await
+    }
+
+    async fn create_relay(
+        &self,
+        socket_addr: Vec<u8>,
+        relay_server: String,
+        uuid: String,
+        server: ServerPtr,
+        secure: bool,
+        initiate: bool,
+        socket_addr_v6: hbb_common::bytes::Bytes,
+    ) -> ResultType<()> {
+        let peer_addr = hbb_common::AddrMangle::decode(&socket_addr);
+        log::info!(
+            "OHOS create_relay requested from {:?}, relay_server: {}, uuid: {}, secure: {}",
+            peer_addr,
+            relay_server,
+            uuid,
+            secure,
+        );
+
+        let mut socket =
+            hbb_common::socket_client::connect_tcp(&*self.host, CONNECT_TIMEOUT).await?;
+
+        let mut msg_out = Message::new();
+        let mut rr = RelayResponse {
+            socket_addr: socket_addr.into(),
+            version: crate::VERSION.to_owned(),
+            socket_addr_v6,
+            ..Default::default()
+        };
+        if initiate {
+            rr.uuid = uuid.clone();
+            rr.relay_server = relay_server.clone();
+            rr.set_id(hbb_common::config::Config::get_id());
+        }
+        msg_out.set_relay_response(rr);
+        socket.send(&msg_out).await?;
+        crate::create_relay_connection(
+            server,
+            relay_server,
+            uuid,
+            peer_addr,
+            secure,
+            hbb_common::socket_client::is_ipv4(&self.addr),
+        )
+        .await;
         Ok(())
     }
 
-    async fn handle_relay_response(&self, rr: RelayResponse, _server: ServerPtr) -> ResultType<()> {
-        let addr_str = String::from_utf8_lossy(&rr.socket_addr);
-        log::info!("OHOS received RelayResponse from {}", addr_str);
-        crate::harmony_bridge::core::queue_event(
-            "incoming-connection",
-            &format!("Relay response from {}", addr_str),
-            "",
-        );
-        Ok(())
+    fn get_relay_server(&self, provided_by_rendezvous_server: String) -> String {
+        let mut relay_server = Config::get_option("relay-server");
+        if relay_server.is_empty() {
+            relay_server = provided_by_rendezvous_server;
+        }
+        if relay_server.is_empty() {
+            relay_server = crate::increase_port(&self.host, 1);
+        }
+        relay_server
     }
 }
 
 fn new_server() -> ServerPtr {
-    Arc::new(RwLock::new(server::Server {
-        id_count: hbb_common::rand::random::<i32>() % 1000 + 1000,
-    }))
+    Arc::new(RwLock::new(server::Server::new()))
 }
 
 fn start_lan_listener_once() {
