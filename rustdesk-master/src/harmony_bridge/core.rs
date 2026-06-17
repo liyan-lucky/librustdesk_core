@@ -79,6 +79,17 @@ fn incoming_service_started() -> &'static Mutex<bool> {
     INCOMING_SERVICE_STARTED.get_or_init(|| Mutex::new(false))
 }
 
+pub fn set_incoming_service_started(started: bool) {
+    *incoming_service_started().lock().unwrap() = started;
+    if started {
+        queue_event(
+            "incoming-service-ready",
+            "OHOS incoming service is now ready (video source active)",
+            "",
+        );
+    }
+}
+
 fn incoming_service_requested() -> &'static Mutex<bool> {
     INCOMING_SERVICE_REQUESTED.get_or_init(|| Mutex::new(false))
 }
@@ -189,16 +200,16 @@ pub fn get_core_snapshot_json(server: &str) -> String {
         "statusSummary": if !status_summary.trim().is_empty() {
             status_summary
         } else if incoming_ready {
-            "Incoming service requested".to_owned()
+            "Incoming service ready".to_owned()
         } else if incoming_requested {
-            "Incoming service requested".to_owned()
+            "Incoming service starting".to_owned()
         } else {
             "Official Harmony bridge ready".to_owned()
         },
         "detailMessage": if !detail_message.trim().is_empty() {
             detail_message
         } else if incoming_ready {
-            "Harmony bridge applied incoming service options. Desktop server thread launch is disabled on Harmony to avoid appspawn exit.".to_owned()
+            "OHOS incoming service is active. Video source is encoding frames for connected peers.".to_owned()
         } else if incoming_requested && incoming_frame_payload_ready {
             "Harmony native screen frames are cached in core. Desktop server subscription is still disabled on Harmony.".to_owned()
         } else if incoming_requested {

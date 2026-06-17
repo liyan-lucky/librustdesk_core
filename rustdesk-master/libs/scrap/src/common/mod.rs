@@ -214,6 +214,22 @@ impl Frame<'_> {
             Frame::Texture(texture) => Ok(EncodeInput::Texture(*texture)),
         }
     }
+
+    #[cfg(target_env = "ohos")]
+    pub fn to<'a>(
+        &'a self,
+        yuvfmt: EncodeYuvFormat,
+        yuv: &'a mut Vec<u8>,
+        mid_data: &mut Vec<u8>,
+    ) -> ResultType<EncodeInput<'a>> {
+        match self {
+            Frame::PixelBuffer(pixelbuffer) => {
+                convert_to_yuv(&pixelbuffer, yuvfmt, yuv, mid_data)?;
+                Ok(EncodeInput::YUV(yuv))
+            }
+            Frame::Texture(texture) => Ok(EncodeInput::Texture(*texture)),
+        }
+    }
 }
 
 pub enum EncodeInput<'a> {

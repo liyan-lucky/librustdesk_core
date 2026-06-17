@@ -83,6 +83,51 @@ impl Encoder {
         Ok(Encoder { vpx })
     }
 
+    pub fn yuvfmt(&self) -> crate::EncodeYuvFormat {
+        use super::vpxcodec::EncoderApi;
+        self.vpx.yuvfmt()
+    }
+
+    pub fn latency_free(&self) -> bool {
+        use super::vpxcodec::EncoderApi;
+        self.vpx.latency_free()
+    }
+
+    pub fn bitrate(&self) -> u32 {
+        use super::vpxcodec::EncoderApi;
+        self.vpx.bitrate()
+    }
+
+    pub fn support_changing_quality(&self) -> bool {
+        use super::vpxcodec::EncoderApi;
+        self.vpx.support_changing_quality()
+    }
+
+    pub fn is_hardware(&self) -> bool {
+        false
+    }
+
+    pub fn disable(&self) {}
+
+    #[inline]
+    pub fn negotiated_codec() -> CodecFormat {
+        ENCODE_CODEC_FORMAT.lock().unwrap().clone()
+    }
+
+    pub fn set_fallback(config: &EncoderCfg) {
+        let format = match config {
+            EncoderCfg::VPX(vpx) => match vpx.codec {
+                VpxVideoCodecId::VP8 => CodecFormat::VP8,
+                VpxVideoCodecId::VP9 => CodecFormat::VP9,
+            },
+        };
+        *ENCODE_CODEC_FORMAT.lock().unwrap() = format;
+    }
+
+    pub fn use_i444(_config: &EncoderCfg) -> bool {
+        false
+    }
+
     pub fn usable_encoding() -> SupportedEncoding {
         SupportedEncoding {
             vp8: true,
