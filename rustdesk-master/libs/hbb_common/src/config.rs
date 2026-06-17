@@ -1020,12 +1020,12 @@ impl Config {
         std::cmp::max(CONFIG2.read().unwrap().serial, SERIAL)
     }
 
-    #[cfg(any(target_os = "android", target_os = "ios"))]
+    #[cfg(any(target_os = "android", target_os = "ios", target_env = "ohos"))]
     fn gen_id() -> Option<String> {
         Self::get_auto_id()
     }
 
-    #[cfg(not(any(target_os = "android", target_os = "ios")))]
+    #[cfg(not(any(target_os = "android", target_os = "ios", target_env = "ohos")))]
     fn gen_id() -> Option<String> {
         let hostname_as_id = BUILTIN_SETTINGS
             .read()
@@ -1047,7 +1047,7 @@ impl Config {
     }
 
     fn get_auto_id() -> Option<String> {
-        #[cfg(any(target_os = "android", target_os = "ios"))]
+        #[cfg(any(target_os = "android", target_os = "ios", target_env = "ohos"))]
         {
             return Some(
                 rand::thread_rng()
@@ -1056,7 +1056,7 @@ impl Config {
             );
         }
 
-        #[cfg(not(any(target_os = "android", target_os = "ios")))]
+        #[cfg(not(any(target_os = "android", target_os = "ios", target_env = "ohos")))]
         {
             let mut id = 0u32;
             if let Ok(Some(ma)) = mac_address::get_mac_address() {

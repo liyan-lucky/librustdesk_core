@@ -188,8 +188,8 @@ pub fn get_core_snapshot_json(server: &str) -> String {
         "adapter": "official-native",
         "coreReady": true,
         "incomingReady": incoming_ready,
-        "displayId": get_local_option("id"),
-        "fingerprint": "",
+        "displayId": config::Config::get_id(),
+        "fingerprint": crate::common::pk_to_fingerprint(config::Config::get_key_pair().1),
         "directAddress": "",
         "server": server,
         "captureRequired": incoming_requested && !incoming_ready,
@@ -231,7 +231,26 @@ pub fn initialize_runtime(app_dir: &str, _custom_client_config: &str) -> String 
     if !app_dir.trim().is_empty() {
         *config::APP_DIR.write().unwrap() = app_dir.trim().to_owned();
     }
-    "{}".to_owned()
+    let reloaded = config::Config::load();
+    {
+        let mut cfg = config::CONFIG.write().unwrap();
+        if cfg.id.is_empty() && !reloaded.id.is_empty() {
+            cfg.id = reloaded.id.clone();
+        }
+        if cfg.key_pair.0.is_empty() && !reloaded.key_pair.0.is_empty() {
+            cfg.key_pair = reloaded.key_pair.clone();
+        }
+        cfg.enc_id = reloaded.enc_id.clone();
+        cfg.key_pair = reloaded.key_pair.clone();
+        cfg.store();
+    }
+    let id = config::Config::get_id();
+    let fp = crate::common::pk_to_fingerprint(config::Config::get_key_pair().1);
+    json!({
+        "id": id,
+        "fingerprint": fp,
+    })
+    .to_string()
 }
 
 /// Pulls pending session events as a JSON string.
@@ -446,8 +465,8 @@ pub fn main_start_service(
             "adapter": "official-native",
             "coreReady": true,
             "incomingReady": false,
-            "displayId": get_local_option("id"),
-            "fingerprint": "",
+            "displayId": config::Config::get_id(),
+            "fingerprint": crate::common::pk_to_fingerprint(config::Config::get_key_pair().1),
             "directAddress": "",
             "server": server,
             "captureRequired": true,
@@ -473,8 +492,8 @@ pub fn main_start_service(
             "adapter": "official-native",
             "coreReady": true,
             "incomingReady": false,
-            "displayId": get_local_option("id"),
-            "fingerprint": "",
+            "displayId": config::Config::get_id(),
+            "fingerprint": crate::common::pk_to_fingerprint(config::Config::get_key_pair().1),
             "directAddress": "",
             "server": server,
             "captureRequired": false,
@@ -2270,7 +2289,7 @@ pub fn main_get_version() -> String {
 }
 
 pub fn main_get_fingerprint() -> String {
-    config::Config::get_option("fingerprint")
+    crate::common::pk_to_fingerprint(config::Config::get_key_pair().1)
 }
 
 pub fn main_get_api_server() -> String {
@@ -2896,7 +2915,9 @@ pub fn main_get_home_dir() -> String {
     config::Config::get_home().to_string_lossy().to_string()
 }
 
-pub fn main_init(_app_dir: String, _custom_client_config: String) {}
+pub fn main_init(app_dir: String, custom_client_config: String) {
+    initialize_runtime(&app_dir, &custom_client_config);
+}
 
 pub fn main_device_id() -> String {
     config::Config::get_id()
