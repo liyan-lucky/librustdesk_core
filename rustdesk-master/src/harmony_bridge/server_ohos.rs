@@ -862,8 +862,8 @@ lazy_static::lazy_static! {
 }
 
 const TEST_DELAY_TIMEOUT: Duration = Duration::from_secs(1);
-const SEC30: Duration = Duration::from_secs(30);
-const SEND_TIMEOUT_VIDEO: u64 = 12_000;
+const SEC30: Duration = Duration::from_secs(60);
+const SEND_TIMEOUT_VIDEO: u64 = 30_000;
 const SEND_TIMEOUT_OTHER: u64 = SEND_TIMEOUT_VIDEO * 10;
 
 #[derive(serde_derive::Serialize)]
@@ -927,6 +927,8 @@ impl Connection {
 
         stream.set_send_timeout(SEND_TIMEOUT_VIDEO);
 
+        let mut video_send_fail_count: u32 = 0;
+
         loop {
             tokio::select! {
                 res = stream.next() => {
@@ -965,8 +967,14 @@ impl Connection {
                 }
                 Some((_instant, value)) = rx_video.recv() => {
                     if let Err(err) = stream.send(&value as &Message).await {
-                        log::warn!("OHOS Connection #{} video send error: {}", id, err);
-                        break;
+                        video_send_fail_count += 1;
+                        if video_send_fail_count > 5 {
+                            log::warn!("OHOS Connection #{} video send error after 5 retries: {}", id, err);
+                            break;
+                        }
+                        log::warn!("OHOS Connection #{} video send error (retry {}/5): {}", id, video_send_fail_count, err);
+                    } else {
+                        video_send_fail_count = 0;
                     }
                 }
                 Some((_instant, value)) = rx.recv() => {

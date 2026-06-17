@@ -1306,6 +1306,7 @@ pub fn session_reconnect(force_relay: bool) -> bool {
     if peer_id.trim().is_empty() {
         return false;
     }
+    *latest_video_frame().lock().unwrap() = None;
     let detail = if force_relay {
         "Reconnecting through relay"
     } else {
