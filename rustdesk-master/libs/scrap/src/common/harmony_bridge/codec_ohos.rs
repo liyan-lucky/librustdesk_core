@@ -84,22 +84,22 @@ impl Encoder {
     }
 
     pub fn yuvfmt(&self) -> crate::EncodeYuvFormat {
-        use super::vpxcodec::EncoderApi;
+        use crate::codec::EncoderApi;
         self.vpx.yuvfmt()
     }
 
     pub fn latency_free(&self) -> bool {
-        use super::vpxcodec::EncoderApi;
+        use crate::codec::EncoderApi;
         self.vpx.latency_free()
     }
 
     pub fn bitrate(&self) -> u32 {
-        use super::vpxcodec::EncoderApi;
+        use crate::codec::EncoderApi;
         self.vpx.bitrate()
     }
 
     pub fn support_changing_quality(&self) -> bool {
-        use super::vpxcodec::EncoderApi;
+        use crate::codec::EncoderApi;
         self.vpx.support_changing_quality()
     }
 
