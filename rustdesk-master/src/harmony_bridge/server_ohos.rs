@@ -58,9 +58,9 @@ pub mod audio_service {
 
     pub fn set_voice_call_input_device(_device: Option<String>, _set_if_present: bool) {}
 
-    pub fn new() -> GenericService {
-        let svc = EmptyExtraFieldService::new(NAME.to_owned(), false);
-        GenericService::run(&svc.clone(), |_: EmptyExtraFieldService| Ok(()));
+    pub fn new() -> super::GenericService {
+        let svc = super::EmptyExtraFieldService::new(NAME.to_owned(), false);
+        super::GenericService::run(&svc.clone(), |_: super::EmptyExtraFieldService| Ok(()));
         svc.sp
     }
 }
@@ -72,9 +72,9 @@ pub mod display_service {
         pub static ref PRIMARY_DISPLAY_IDX: Arc<usize> = Arc::new(0);
     }
 
-    pub fn new() -> GenericService {
-        let svc = EmptyExtraFieldService::new("display".to_owned(), true);
-        GenericService::run(&svc.clone(), |_: EmptyExtraFieldService| Ok(()));
+    pub fn new() -> super::GenericService {
+        let svc = super::EmptyExtraFieldService::new("display".to_owned(), true);
+        super::GenericService::run(&svc.clone(), |_: super::EmptyExtraFieldService| Ok(()));
         svc.sp
     }
 
@@ -114,9 +114,9 @@ pub mod clipboard_service {
     pub const NAME: &str = "clipboard";
     pub const FILE_NAME: &str = "clipboard_file";
 
-    pub fn new(name: String) -> GenericService {
-        let svc = EmptyExtraFieldService::new(name, false);
-        GenericService::run(&svc.clone(), |_: EmptyExtraFieldService| Ok(()));
+    pub fn new(name: String) -> super::GenericService {
+        let svc = super::EmptyExtraFieldService::new(name, false);
+        super::GenericService::run(&svc.clone(), |_: super::EmptyExtraFieldService| Ok(()));
         svc.sp
     }
 }
@@ -127,7 +127,7 @@ pub mod clipboard_service {
 
 pub mod video_service {
     use super::*;
-    use scrap::TraitCapturer;
+    use scrap::{Frame, TraitCapturer};
 
     pub const OPTION_REFRESH: &str = "refresh";
 
