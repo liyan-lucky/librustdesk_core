@@ -1276,13 +1276,13 @@ impl<T: InvokeUiSession> Session<T> {
     }
 
     pub fn reconnect(&self, force_relay: bool) {
-        // 1. If current session is connecting, do not reconnect.
+        // 1. If current session is connecting, send `Data::Close` to abort it and reconnect.
         // 2. If the connection is established, send `Data::Close`.
         // 3. If the connection is disconnected, do nothing.
         let mut connection_round_state_lock = self.connection_round_state.lock().unwrap();
         if self.thread.lock().unwrap().is_some() {
             match connection_round_state_lock.state {
-                ConnectionState::Connecting => return,
+                ConnectionState::Connecting => self.send(Data::Close),
                 ConnectionState::Connected => self.send(Data::Close),
                 ConnectionState::Disconnected => {}
             }
