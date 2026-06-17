@@ -231,20 +231,8 @@ pub fn initialize_runtime(app_dir: &str, _custom_client_config: &str) -> String 
     if !app_dir.trim().is_empty() {
         *config::APP_DIR.write().unwrap() = app_dir.trim().to_owned();
     }
-    let reloaded = config::Config::load();
-    {
-        let mut cfg = config::CONFIG.write().unwrap();
-        if cfg.id.is_empty() && !reloaded.id.is_empty() {
-            cfg.id = reloaded.id.clone();
-        }
-        if cfg.key_pair.0.is_empty() && !reloaded.key_pair.0.is_empty() {
-            cfg.key_pair = reloaded.key_pair.clone();
-        }
-        cfg.enc_id = reloaded.enc_id.clone();
-        cfg.key_pair = reloaded.key_pair.clone();
-        cfg.store();
-    }
     let id = config::Config::get_id();
+    let _key_pair = config::Config::get_key_pair();
     let fp = crate::common::pk_to_fingerprint(config::Config::get_key_pair().1);
     json!({
         "id": id,
