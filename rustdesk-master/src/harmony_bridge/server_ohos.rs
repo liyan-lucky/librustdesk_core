@@ -8,7 +8,7 @@ use hbb_common::{
         preset_permanent_password_storage_is_usable_for_auth, Config, CONNECT_TIMEOUT, RELAY_PORT,
     },
     log,
-    message_proto::*,
+    message_proto::{option_message::BoolOption, *},
     password_security::{self as password, ApproveMode},
     protobuf::{Enum, Message as _},
     rendezvous_proto::*,
@@ -58,8 +58,10 @@ pub mod audio_service {
 
     pub fn set_voice_call_input_device(_device: Option<String>, _set_if_present: bool) {}
 
-    pub fn new() -> Box<dyn super::Service> {
-        Box::new(super::EmptyExtraFieldService::new(NAME.to_owned(), false))
+    pub fn new() -> GenericService {
+        let svc = EmptyExtraFieldService::new(NAME.to_owned(), false);
+        GenericService::run(&svc.clone(), |_: EmptyExtraFieldService| Ok(()));
+        svc.sp
     }
 }
 
@@ -70,8 +72,10 @@ pub mod display_service {
         pub static ref PRIMARY_DISPLAY_IDX: Arc<usize> = Arc::new(0);
     }
 
-    pub fn new() -> Box<dyn super::Service> {
-        Box::new(super::EmptyExtraFieldService::new("display".to_owned(), true))
+    pub fn new() -> GenericService {
+        let svc = EmptyExtraFieldService::new("display".to_owned(), true);
+        GenericService::run(&svc.clone(), |_: EmptyExtraFieldService| Ok(()));
+        svc.sp
     }
 
     pub fn is_inited_msg() -> Option<hbb_common::message_proto::Message> {
@@ -110,8 +114,10 @@ pub mod clipboard_service {
     pub const NAME: &str = "clipboard";
     pub const FILE_NAME: &str = "clipboard_file";
 
-    pub fn new(name: String) -> Box<dyn super::Service> {
-        Box::new(super::EmptyExtraFieldService::new(name, false))
+    pub fn new(name: String) -> GenericService {
+        let svc = EmptyExtraFieldService::new(name, false);
+        GenericService::run(&svc.clone(), |_: EmptyExtraFieldService| Ok(()));
+        svc.sp
     }
 }
 
@@ -121,6 +127,7 @@ pub mod clipboard_service {
 
 pub mod video_service {
     use super::*;
+    use scrap::TraitCapturer;
 
     pub const OPTION_REFRESH: &str = "refresh";
 
@@ -229,7 +236,8 @@ pub mod video_service {
             let time = start.elapsed();
             let ms = (time.as_secs() * 1000 + time.subsec_millis() as u64) as i64;
 
-            let res = match c.frame(std_time::Duration::from_millis(33)) {
+            let res: std::io::Result<Frame<'_>> = c.frame(std_time::Duration::from_millis(33));
+            let res = match res {
                 Ok(frame) => {
                     repeat_encode_counter = 0;
                     if frame.valid() {
@@ -297,8 +305,9 @@ pub mod video_service {
         capture_height: usize,
     ) -> ResultType<HashSet<i32>> {
         match encoder.encode_to_message(frame, ms) {
-            Ok(msg) => {
+            Ok(mut vf) => {
                 *encode_fail_counter = 0;
+                vf.display = display_idx as _;
                 if *first_frame {
                     *first_frame = false;
                     log::info!(
@@ -308,6 +317,8 @@ pub mod video_service {
                     );
                     crate::harmony_bridge::core::set_incoming_service_started(true);
                 }
+                let mut msg = Message::new();
+                msg.set_video_frame(vf);
                 Ok(sp.send_video_frame(msg))
             }
             Err(err) => {
@@ -722,12 +733,6 @@ impl Subscriber for ConnInner {
     }
 }
 
-impl From<ConnInner> for ConnInner {
-    fn from(c: ConnInner) -> Self {
-        c
-    }
-}
-
 // ============================================================
 // Server
 // ============================================================
@@ -749,9 +754,9 @@ pub fn new() -> ServerPtr {
         services: HashMap::new(),
         id_count: hbb_common::rand::random::<i32>() % 1000 + 1000,
     };
-    server.add_service(audio_service::new());
-    server.add_service(display_service::new());
-    server.add_service(clipboard_service::new(clipboard_service::NAME.to_owned()));
+    server.add_service(Box::new(audio_service::new()));
+    server.add_service(Box::new(display_service::new()));
+    server.add_service(Box::new(clipboard_service::new(clipboard_service::NAME.to_owned())));
     Arc::new(RwLock::new(server))
 }
 
@@ -805,7 +810,7 @@ impl Server {
     }
 
     pub fn close_connections(&mut self) {
-        let conn_inners: Vec<_> = self.connections.values().cloned().collect();
+        let conn_inners: Vec<_> = self.connections.values_mut().collect();
         for c in conn_inners {
             let mut misc = Misc::new();
             misc.set_stop_service(true);
@@ -1123,43 +1128,43 @@ async fn handle_incoming_message(
             crate::harmony_bridge::core::queue_event("multi-clipboard", "multi-clip-from-peer", "");
             true
         }
-        Some(message::Union::ChatMessage(chat)) => {
-            crate::harmony_bridge::core::queue_event(
-                "chat-message-incoming",
-                &chat.text,
-                "",
-            );
-            true
-        }
         Some(message::Union::FileAction(_fa)) => {
             crate::harmony_bridge::core::queue_event("file-action", "file-action-from-peer", "");
             true
         }
-        Some(message::Union::Misc(misc)) => {
-            match &misc.union {
-                Some(misc::Union::SwitchDisplay(sd)) => {
-                    crate::harmony_bridge::core::queue_event(
-                        "switch-display",
-                        &format!("display={}", sd.display),
-                        "",
-                    );
-                }
-                Some(misc::Union::RefreshVideo(_)) => {
-                    if let Some(s) = server.upgrade() {
-                        let name = video_service::get_service_name(video_service::VideoSource::Monitor, 0);
-                        s.write().unwrap().subscribe(&name, inner.clone(), true);
-                    }
-                }
-                Some(misc::Union::Option(opt)) => {
-                    handle_option_message(opt, keyboard, clipboard, audio, inner, server);
-                }
-                Some(misc::Union::StopService(_)) => {
-                    log::info!("OHOS Connection #{} stop service requested", id);
-                    return false;
-                }
-                _ => {}
+        Some(message::Union::Misc(misc)) => match &misc.union {
+            Some(misc::Union::ChatMessage(chat)) => {
+                crate::harmony_bridge::core::queue_event(
+                    "chat-message-incoming",
+                    &chat.text,
+                    "",
+                );
+                true
             }
-            true
+            Some(misc::Union::SwitchDisplay(sd)) => {
+                crate::harmony_bridge::core::queue_event(
+                    "switch-display",
+                    &format!("display={}", sd.display),
+                    "",
+                );
+                true
+            }
+            Some(misc::Union::RefreshVideo(_)) => {
+                if let Some(s) = server.upgrade() {
+                    let name = video_service::get_service_name(video_service::VideoSource::Monitor, 0);
+                    s.write().unwrap().subscribe(&name, inner.clone(), true);
+                }
+                true
+            }
+            Some(misc::Union::Option(opt)) => {
+                handle_option_message(opt, keyboard, clipboard, audio, inner, server);
+                true
+            }
+            Some(misc::Union::StopService(_)) => {
+                log::info!("OHOS Connection #{} stop service requested", id);
+                false
+            }
+            _ => true,
         }
         Some(message::Union::TestDelay(td)) => {
             let mut msg_out = Message::new();
@@ -1179,14 +1184,20 @@ fn handle_option_message(
     inner: &ConnInner,
     server: &ServerPtrWeak,
 ) {
-    if opt.disable_keyboard {
-        *keyboard = false;
+    if let Ok(q) = opt.disable_keyboard.enum_value() {
+        if q == BoolOption::Yes {
+            *keyboard = false;
+        }
     }
-    if opt.disable_clipboard {
-        *clipboard = false;
+    if let Ok(q) = opt.disable_clipboard.enum_value() {
+        if q == BoolOption::Yes {
+            *clipboard = false;
+        }
     }
-    if opt.disable_audio {
-        *audio = false;
+    if let Ok(q) = opt.disable_audio.enum_value() {
+        if q == BoolOption::Yes {
+            *audio = false;
+        }
     }
     if let Some(s) = server.upgrade() {
         if !*audio {
@@ -1425,7 +1436,7 @@ pub async fn create_relay_connection(
     ipv4: bool,
 ) {
     if let Err(err) =
-        create_relay_connection_(server, relay_server, uuid, peer_addr, secure, ipv4).await
+        create_relay_connection_(server, relay_server, uuid.clone(), peer_addr, secure, ipv4).await
     {
         log::error!(
             "Failed to create relay connection for {} with uuid {}: {}",
