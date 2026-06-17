@@ -888,8 +888,6 @@ impl InvokeUiSession for HarmonyHandler {
         queue_event("peer-info", &detail, &peer_id);
         if get_session_stage() != "connected" {
             update_connect_state("connected", &peer_id, "Connected", &detail, "");
-        } else {
-            update_connect_state("connected", &peer_id, "Connected", &detail, "");
         }
     }
 
