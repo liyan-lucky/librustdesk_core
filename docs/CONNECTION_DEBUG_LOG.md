@@ -14,6 +14,7 @@
 
 - x86_64 OHOS 构建 libvpx 时禁用 x86 SIMD/汇编路径，避免 SDK clang 接收 nasm/yasm 参数；新增 Opus 1.5.2 静态库准备逻辑，保证 `magnum-opus` 在 `VCPKG_ROOT\installed\<triplet>` 下能找到头文件和库。
 - GitHub release job 改为仅在 build matrix 全成功时运行，并在发布前检查 arm64 与 x86_64 两个 `.a` 均存在且大小合理。
+- run `27852266805` 首轮线上验证发现两个 build job 成功后仍生成空 `core-24` release：产物检查之后的 `actions/checkout` 清理了 `./release-assets`。已移除该 checkout，并让 release action 在 unmatched files 时失败。
 - `test_ipv6()`、`get_ipv6_socket()` 清理/重验 IPv6 可用性；`Client::connect()` 跳过本地地址族与 peer 地址族不一致的直连候选，并补 relay 兜底。
 
 ### 验证
@@ -21,6 +22,7 @@
 - `powershell -File scripts\build_native_bridge.ps1 -TargetTriple x86_64-unknown-linux-ohos -Profile release` 通过，产物 `128,712,156` bytes，SHA256 `7D0AA289F050AD7D4D06B21516E0B39707570C08A28C700259245EFDA113A1CB`。
 - `powershell -File scripts\build_native_bridge.ps1 -TargetTriple aarch64-unknown-linux-ohos -Profile release` 通过，产物 `130,215,616` bytes，SHA256 `E82E9FE47557EE9771FA5E9C7539EF09670326038F59E8E5748481AE53352B30`。
 - 待推送后继续等待 GitHub Actions Windows 双架构构建和 release 结果；线上结果完成后回填最终 run/tag。
+- 空 `core-24` release/tag 删除后重新触发 Windows 双架构构建；最终 run/tag 待新 workflow 完成后回填。
 
 ## 2026-06-15 core-81 发布：captureRequired 与 OHOS scrap 入站帧源
 

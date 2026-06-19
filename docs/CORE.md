@@ -30,6 +30,7 @@
 - 2026-06-17 OHOS 被控端完整连接链路已实现：`server_ohos.rs` 从146行stub扩展到1461行，包含 Service trait/ServiceTmpl/Subscriber、video_service、Connection::start、accept_connection/create_relay_connection、密码验证（verify_h1/validate_password）；`core.rs` 新增 `set_incoming_service_started()`、session_reconnect 帧缓存清理；`codec_ohos.rs` 补齐 Encoder 缺失方法；`scrap/src/common/mod.rs` 添加 OHOS `Frame::to()`。两次 commit 已推送：`7681b0d`（完整连接链路）和 `6b228d7`（重连稳定性修复：SEC30 30s→60s、SEND_TIMEOUT_VIDEO 12s→30s + 5次重试）。CI 首次构建因 `EncoderApi` 私有引用失败，已修复。
 - 2026-06-19 双架构本地构建修复：x86_64 libvpx 禁用 x86 SIMD/汇编路径以避开 OHOS SDK clang 接收 `-f elf64` 的失败，构建脚本补齐 Opus 1.5.2 到 `VCPKG_ROOT\installed\<triplet>`；arm64 与 x86_64 release profile 均已本地验证通过。x86_64 产物 `128,712,156` bytes / SHA256 `7D0AA289F050AD7D4D06B21516E0B39707570C08A28C700259245EFDA113A1CB`；arm64 产物 `130,215,616` bytes / SHA256 `E82E9FE47557EE9771FA5E9C7539EF09670326038F59E8E5748481AE53352B30`。
 - 2026-06-19 发布门禁修复：Windows release job 只有 build matrix 全成功才运行，两个 artifact 下载不再 `continue-on-error`，发布前强制检查 `librustdesk_core.a` 与 `librustdesk_core_x86_64.a` 同时存在并处于合理大小范围，避免 x86_64 失败时发布空标签或半成品。
+- 2026-06-19 release 二次修复：run `27852266805` 两个 build job 成功后，release job 因产物检查后执行 `actions/checkout` 清理了 `./release-assets`，生成了空 `core-24` release；workflow 已移除该 checkout，并启用 `fail_on_unmatched_files: true`，空 tag 需删除后重新触发。
 - 2026-06-19 IPv4/IPv6 混合连接修复：IPv6 本地缓存会在 bind/STUN/socket 失败时清空并在 `get_ipv6_socket()` 重新校验；`Client::connect()` 跳过本地地址族与 peer 地址族不一致的直连候选，并在 rendezvous 未提供 relay 时用 rendezvous server + 1 端口兜底，改善 IPv4-only 手机访问双栈客户端的路径选择。
 
 ## 架构总览

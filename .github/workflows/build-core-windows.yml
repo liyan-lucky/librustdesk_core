@@ -348,9 +348,6 @@ jobs:
             sha256sum "$f"
           done
 
-      - name: 检出代码（获取 run_number）
-        uses: actions/checkout@v4
-
       - name: 创建 GitHub Release
         uses: softprops/action-gh-release@v2
         with:
@@ -368,9 +365,10 @@ jobs:
 
             线上产物：
             - 标签：core-${{ github.run_number }}
-            - Asset：librustdesk_core.a（arm64-v8a，真机调试）
-            - Asset：librustdesk_core_x86_64.a（x86_64，虚拟设备调试）
+              - Asset：librustdesk_core.a（arm64-v8a，真机调试）
+              - Asset：librustdesk_core_x86_64.a（x86_64，虚拟设备调试）
           files: ./release-assets/*
+          fail_on_unmatched_files: true
           overwrite_files: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
