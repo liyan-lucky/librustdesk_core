@@ -191,6 +191,17 @@ jobs:
           $cxxFlags = $cFlags
 
           Write-Host "Building libopus $opusVersion for OHOS ($targetArch) with CMake..."
+          Write-Host "  cmake: $cmakeExe"
+          Write-Host "  ninja: $ninjaExe"
+          Write-Host "  clang: $clang"
+          Write-Host "  clangxx: $clangxx"
+          Write-Host "  llvmAr: $llvmAr"
+          Write-Host "  llvmRanlib: $llvmRanlib"
+          Write-Host "  sysroot: $sdkSysrootFwd"
+          Write-Host "  cFlags: $cFlags"
+          Write-Host "  installRoot: $installRootFwd"
+          Write-Host "  opusRoot: $opusRoot"
+          Write-Host "  buildDir: $buildDir"
           & $cmakeExe `
             -S $opusRoot `
             -B $buildDir `
@@ -274,6 +285,9 @@ jobs:
             cargo_build_*.log
             build_env_*.log
             _build/build-native-bridge-*.cmd
+            _build/opus-*/build/*.log
+            _build/opus-*-build/CMakeFiles/CMakeError.log
+            _build/opus-*-build/CMakeFiles/CMakeOutput.log
           if-no-files-found: ignore
 
       - name: 验证最终产物
