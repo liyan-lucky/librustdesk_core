@@ -180,45 +180,31 @@ jobs:
           $installRootUnix = & $cygpath -u $installRoot
           $sdkUnix = & $cygpath -u $env:RUSTDESK_HARMONY_HOST_SDK
 
-          $bashScript = Join-Path $env:RUNNER_TEMP "build-opus-ohos-$targetArch.sh"
+          $bashScript = Join-Path $env:RUNNER_TEMP "build-opus-ohos.sh"
 
-          $extraConfigureFlags = ""
-          $extraCacheVars = @()
+          $extraConfigure = ""
           if ($targetArch -eq "x86_64") {
-            $extraConfigureFlags = "--disable-asm --disable-rtcd --disable-intrinsics"
-            $extraCacheVars = @(
-              "export ac_cv_func_malloc_0_nonnull=yes",
-              "export ac_cv_func_realloc_0_nonnull=yes",
-              "export opus_cv_x86_sse4_1_support=0",
-              "export opus_cv_x86_sse2_support=0",
-              "export opus_cv_x86_avx2_support=0",
-              "export opus_cv_x86_sse_support=0"
-            )
+            $extraConfigure = "--disable-asm --disable-rtcd --disable-intrinsics"
           }
 
           $lines = @(
             "set -euo pipefail",
             "cd `"$opusRootUnix`"",
             "export CC=`"$sdkUnix/native/llvm/bin/clang.exe`"",
-            "export CXX=`"$sdkUnix/native/llvm/bin/clang++.exe`"",
             "export AR=`"$sdkUnix/native/llvm/bin/llvm-ar.exe`"",
             "export RANLIB=`"$sdkUnix/native/llvm/bin/llvm-ranlib.exe`"",
             "export STRIP=`":`"",
             "export SYSROOT=`"$sdkUnix/native/sysroot`"",
-            "export CFLAGS=`"--target=$clangTarget --sysroot=`$SYSROOT -fPIC -D__MUSL__ -O2`"",
-            "export CXXFLAGS=`"--target=$clangTarget --sysroot=`$SYSROOT -fPIC -D__MUSL__ -O2`"",
-            "export LDFLAGS=`"--target=$clangTarget --sysroot=`$SYSROOT`""
-          )
-          $lines += $extraCacheVars
-          $lines += @(
-            "./configure --host=$configureHost --prefix=`"$installRootUnix`" --enable-shared=no --enable-static=yes --disable-extra-programs --disable-doc $extraConfigureFlags",
+            "export CFLAGS=`"--target=$clangTarget --sysroot=`$SYSROOT -fPIC -D__MUSL__`"",
+            "export LDFLAGS=`"--target=$clangTarget --sysroot=`$SYSROOT`"",
+            "./configure --host=$configureHost --prefix=`"$installRootUnix`" --enable-shared=no --enable-static=yes --disable-extra-programs --disable-doc $extraConfigure",
             "make -j2",
             "make install"
           )
 
           $lines | Set-Content -Path $bashScript -Encoding ascii
 
-          Write-Host "==== build-opus-ohos-$targetArch.sh ===="
+          Write-Host "==== build-opus-ohos.sh ===="
           Get-Content $bashScript
 
           & $bash $bashScript
@@ -234,7 +220,7 @@ jobs:
             throw "libopus.a not found: $libA"
           }
 
-          Write-Host "libopus prepared for $targetArch:"
+          Write-Host "libopus prepared:"
           Get-Item $header, $libA | Format-List FullName,Length
 
       - name: 构建 librustdesk_core.a
