@@ -2442,6 +2442,7 @@ pub async fn test_ipv6() -> Option<tokio::task::JoinHandle<()>> {
             }
         }
         Err(e) => {
+            PUBLIC_IPV6_ADDR.lock().unwrap().0 = None;
             log::warn!("Failed to bind IPv6 socket: {}", e);
         }
     }
@@ -2494,6 +2495,7 @@ pub async fn test_ipv6() -> Option<tokio::task::JoinHandle<()>> {
                 );
             }
             Err(e) => {
+                PUBLIC_IPV6_ADDR.lock().unwrap().0 = None;
                 log::error!("Failed to get public IPv6 address: {}", e);
             }
         };
@@ -2562,12 +2564,20 @@ fn test_ipv6_sync() {
 }
 
 pub async fn get_ipv6_socket() -> Option<(Arc<UdpSocket>, bytes::Bytes)> {
-    let Some(addr) = PUBLIC_IPV6_ADDR.lock().unwrap().0 else {
-        return None;
+    let mut addr = match test_bind_ipv6().await {
+        Ok(addr) => addr,
+        Err(err) => {
+            PUBLIC_IPV6_ADDR.lock().unwrap().0 = None;
+            log::warn!("IPv6 socket request skipped because IPv6 bind/connect failed: {err}");
+            return None;
+        }
     };
+    addr.set_port(0);
+    PUBLIC_IPV6_ADDR.lock().unwrap().0 = Some(addr);
 
     match UdpSocket::bind(addr).await {
         Err(err) => {
+            PUBLIC_IPV6_ADDR.lock().unwrap().0 = None;
             log::warn!("Failed to create UDP socket for IPv6: {err}");
         }
         Ok(socket) => {

@@ -691,34 +691,63 @@ impl Client {
         }
         log::info!("peer address: {}, timeout: {}", peer, connect_timeout);
         let start = std::time::Instant::now();
+        let relay_server_to_use = if relay_server.is_empty() {
+            crate::increase_port(rendezvous_server, 1)
+        } else {
+            relay_server.to_owned()
+        };
+        let address_family_mismatch = local_addr.is_ipv4() != peer.is_ipv4();
+        if address_family_mismatch {
+            log::info!(
+                "skip direct TCP to {} from {} because address families differ; relay_server: {}",
+                peer,
+                local_addr,
+                relay_server_to_use
+            );
+        }
 
         let mut connect_futures = Vec::new();
-        let fut = connect_tcp_local(peer, Some(local_addr), connect_timeout);
-        connect_futures.push(
-            async move {
-                let conn = fut.await?;
-                Ok((conn, None, "TCP"))
-            }
-            .boxed(),
-        );
+        if !address_family_mismatch {
+            let fut = connect_tcp_local(peer, Some(local_addr), connect_timeout);
+            connect_futures.push(
+                async move {
+                    let conn = fut.await?;
+                    Ok((conn, None, "TCP"))
+                }
+                .boxed(),
+            );
+        }
         if let Some(udp_socket_nat) = udp_socket_nat {
             connect_futures.push(udp_nat_connect(udp_socket_nat, "UDP", connect_timeout).boxed());
         }
-        if let Some(udp_socket_v6) = udp_socket_v6 {
-            connect_futures.push(udp_nat_connect(udp_socket_v6, "IPv6", connect_timeout).boxed());
+        if !local_addr.is_ipv4() {
+            if let Some(udp_socket_v6) = udp_socket_v6 {
+                connect_futures
+                    .push(udp_nat_connect(udp_socket_v6, "IPv6", connect_timeout).boxed());
+            }
         }
         // Run all connection attempts concurrently, return the first successful one
-        let (mut conn, kcp, mut typ) = match select_ok(connect_futures).await {
-            Ok(conn) => (Ok(conn.0 .0), conn.0 .1, conn.0 .2),
-            Err(e) => (Err(e), None, ""),
+        let (mut conn, kcp, mut typ) = if connect_futures.is_empty() {
+            (
+                Err(anyhow!(
+                    "No usable direct connection candidate for current address family"
+                )),
+                None,
+                "",
+            )
+        } else {
+            match select_ok(connect_futures).await {
+                Ok(conn) => (Ok(conn.0 .0), conn.0 .1, conn.0 .2),
+                Err(e) => (Err(e), None, ""),
+            }
         };
 
         let mut direct = !conn.is_err();
         if interface.is_force_relay() || conn.is_err() {
-            if !relay_server.is_empty() {
+            if !relay_server_to_use.is_empty() {
                 conn = Self::request_relay(
                     peer_id,
-                    relay_server.to_owned(),
+                    relay_server_to_use,
                     rendezvous_server,
                     !signed_id_pk.is_empty(),
                     key,

@@ -2,6 +2,42 @@
 
 > 记录容易复发的构建、发布和排查问题。新增经验时优先写清楚：现象、根因、修复、以后如何避免。
 
+## 2026-06-19: 双架构核心构建、发布门禁与 IPv4/IPv6 候选地址
+
+### 现象
+
+- GitHub Actions Windows 双架构 run `27848481305` 中 arm64 能继续构建，x86_64 在 libvpx 步骤失败：OHOS SDK `clang` 收到了 nasm/yasm 风格的 `-f elf64` 参数。
+- x86_64 libvpx 修好后，Cargo 在 `magnum-opus` 处暴露缺少 `opus/opus_multistream.h`，说明 Opus 没有安装到 `VCPKG_ROOT\installed\<triplet>`。
+- release job 使用宽松条件和 `continue-on-error` 下载 artifact，x86_64 失败时仍可能进入发布流程，造成空标签或半成品 release。
+- IPv4-only 手机连接同时拥有 IPv4/IPv6 的客户端时，可能拿到不可用的 IPv6 本地缓存或跨地址族直连候选，导致直连失败后中继兜底不稳定。
+
+### 根因
+
+- libvpx 的 x86 汇编探测会生成 `-f elf64` 等 assembler 参数；当前 OHOS Windows 交叉编译路径把 `AS` 指向 SDK clang，clang 不能消费 nasm/yasm 参数。
+- `magnum-opus` 依赖查找路径跟随 `VCPKG_ROOT\installed`，只设置自定义 installed root 或只准备 arm64 依赖会让 x86_64 缺少 Opus 头文件。
+- release job 不能用 `always()` 兜底发布；缺少 artifact 存在性和体积检查时，失败矩阵也能污染 latest。
+- IPv6 可用性缓存不能只在启动时判断，网络环境切换或当前设备只有 IPv4 时必须重新校验；直连候选必须匹配本地 socket 地址族。
+
+### 修复
+
+- `scripts/build_native_bridge.ps1` 在 `x86_64-unknown-linux-ohos` 构建 libvpx 时禁用 x86 SIMD/汇编路径：`--disable-mmx`、`--disable-sse*`、`--disable-avx*` 等，同时保留 VP8/VP9 encoder/decoder 头文件和 API。
+- 构建脚本新增 Opus 1.5.2 静态库准备逻辑，安装到 `VCPKG_ROOT\installed\<triplet>`；x86_64 禁用 Opus intrinsics，避免再引入目标平台汇编问题。
+- Windows release job 改为 `if: needs.build.result == 'success'`，下载两个 artifact 不再 `continue-on-error`，发布前强制检查 `librustdesk_core.a` 与 `librustdesk_core_x86_64.a` 同时存在且大小在 `100000000..250000000` bytes。
+- `test_ipv6()` 在 bind/STUN 失败时清空 `PUBLIC_IPV6_ADDR`；`get_ipv6_socket()` 每次重新 bind 校验；`Client::connect()` 跳过本地地址族与 peer 地址族不一致的直连 TCP/UDP 候选，并在无 relay 参数时使用 rendezvous server + 1 端口作为兜底 relay。
+
+### 验证
+
+- 本地 `x86_64-unknown-linux-ohos` release 构建通过，产物 `128,712,156` bytes，SHA256 `7D0AA289F050AD7D4D06B21516E0B39707570C08A28C700259245EFDA113A1CB`。
+- 本地 `aarch64-unknown-linux-ohos` release 构建通过，产物 `130,215,616` bytes，SHA256 `E82E9FE47557EE9771FA5E9C7539EF09670326038F59E8E5748481AE53352B30`。
+- x86_64 构建日志确认 libvpx 已成功生成 `libvpx.a`，Opus 已成功生成 `libopus.a`，Cargo build exit code 为 0。
+
+### 以后如何避免
+
+- 不要把 x86_64 OHOS libvpx 当作普通 Linux x86 汇编链路处理；当前 Windows 交叉编译优先禁用 x86 汇编优化，保证可复现产物。
+- 新增 native 依赖时同时检查 arm64 和 x86_64 的 `VCPKG_ROOT\installed\<triplet>` 头文件、库文件、pkgconfig/cmake 文件。
+- release job 必须以 build matrix 全成功为前置条件，不能用 `always()` 发布 latest；发布前至少检查文件存在、大小范围和 SHA256。
+- 连接问题遇到 IPv4-only/IPv6-only/双栈混合环境时，先检查本地 socket 地址族和 peer 地址族是否匹配，不要复用过期 IPv6 缓存。
+
 ## 2026-06-16: OHOS 替代文件移入 `harmony_bridge/` 子目录
 
 ### 现象

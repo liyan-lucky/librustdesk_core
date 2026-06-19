@@ -2,6 +2,26 @@
 
 > 本文记录每一轮连接和核心调试过程。当前结论以最新时间段为准，历史段落保留排查脉络。
 
+## 2026-06-19 双架构核心与 IPv4-only 手机连接修复
+
+### 现象
+
+- 最新 Windows 双架构线上构建中，arm64 可继续构建，x86_64 在 libvpx 阶段失败，日志显示 `clang: error: unknown argument: '-f'` 和 `no such file or directory: 'elf64'`。
+- release job 在 x86_64 失败时仍可能进入发布流程，造成空标签或不完整 release。
+- 手机处于 IPv4-only 网络环境时，连接同时有 IPv4/IPv6 地址的客户端不稳定，直连候选可能跨地址族或复用过期 IPv6 缓存。
+
+### 修改
+
+- x86_64 OHOS 构建 libvpx 时禁用 x86 SIMD/汇编路径，避免 SDK clang 接收 nasm/yasm 参数；新增 Opus 1.5.2 静态库准备逻辑，保证 `magnum-opus` 在 `VCPKG_ROOT\installed\<triplet>` 下能找到头文件和库。
+- GitHub release job 改为仅在 build matrix 全成功时运行，并在发布前检查 arm64 与 x86_64 两个 `.a` 均存在且大小合理。
+- `test_ipv6()`、`get_ipv6_socket()` 清理/重验 IPv6 可用性；`Client::connect()` 跳过本地地址族与 peer 地址族不一致的直连候选，并补 relay 兜底。
+
+### 验证
+
+- `powershell -File scripts\build_native_bridge.ps1 -TargetTriple x86_64-unknown-linux-ohos -Profile release` 通过，产物 `128,712,156` bytes，SHA256 `7D0AA289F050AD7D4D06B21516E0B39707570C08A28C700259245EFDA113A1CB`。
+- `powershell -File scripts\build_native_bridge.ps1 -TargetTriple aarch64-unknown-linux-ohos -Profile release` 通过，产物 `130,215,616` bytes，SHA256 `E82E9FE47557EE9771FA5E9C7539EF09670326038F59E8E5748481AE53352B30`。
+- 待推送后继续等待 GitHub Actions Windows 双架构构建和 release 结果；线上结果完成后回填最终 run/tag。
+
 ## 2026-06-15 core-81 发布：captureRequired 与 OHOS scrap 入站帧源
 
 ### 现象

@@ -82,6 +82,12 @@ $vpxConfigureTarget = switch ($TargetTriple) {
   "x86_64-unknown-linux-ohos" { "x86_64-linux-gcc" }
   default { "arm64-linux-gcc" }
 }
+$vpxExtraConfigureOptions = switch ($TargetTriple) {
+  "x86_64-unknown-linux-ohos" {
+    "--disable-mmx --disable-sse --disable-sse2 --disable-sse3 --disable-ssse3 --disable-sse4_1 --disable-avx --disable-avx2 --disable-avx512"
+  }
+  default { "" }
+}
 $configureHost = switch ($TargetTriple) {
   "aarch64-unknown-linux-ohos" { "aarch64-unknown-linux-gnu" }
   "x86_64-unknown-linux-ohos" { "x86_64-unknown-linux-gnu" }
@@ -582,7 +588,7 @@ export VPX_OHOS_CXXFLAGS="$ohosCxxStdFlags"
 export CFLAGS="--target=$BindgenTarget --sysroot=$sdkSysrootMsys -I$archIncludeMsys -I$usrIncludeMsys -D__MUSL__ -fPIC -O2"
 export CXXFLAGS="--target=$BindgenTarget --sysroot=$sdkSysrootMsys -I$archIncludeMsys -I$usrIncludeMsys `$VPX_OHOS_CXXFLAGS -D__MUSL__ -fPIC -O2"
 export LDFLAGS="--target=$BindgenTarget --sysroot=$sdkSysrootMsys"
-../configure --target=$vpxConfigureTarget --prefix="$installMsys" --libdir="$installMsys/lib" --extra-cxxflags="`$VPX_OHOS_CXXFLAGS" --enable-static --disable-shared --disable-examples --disable-tools --disable-docs --disable-unit-tests --disable-install-bins --disable-install-srcs --disable-dependency-tracking --disable-runtime-cpu-detect --enable-vp8 --enable-vp9 --enable-vp9-highbitdepth
+../configure --target=$vpxConfigureTarget --prefix="$installMsys" --libdir="$installMsys/lib" --extra-cxxflags="`$VPX_OHOS_CXXFLAGS" --enable-static --disable-shared --disable-examples --disable-tools --disable-docs --disable-unit-tests --disable-install-bins --disable-install-srcs --disable-dependency-tracking --disable-runtime-cpu-detect $vpxExtraConfigureOptions --enable-vp8 --enable-vp9 --enable-vp9-highbitdepth
 make -j$jobs libvpx.a
 mkdir -p "$installMsys/include/vpx" "$installMsys/lib/pkgconfig"
 cp -f libvpx.a "$installMsys/lib/libvpx.a"
@@ -749,6 +755,115 @@ function Ensure-LibyuvStaticLibrary {
   }
 
   Write-Log "libyuv built successfully at: $finalLib"
+}
+
+function Ensure-OpusStaticLibrary {
+  param(
+    [string]$BuildRoot,
+    [string]$SdkDirectory,
+    [string]$VcpkgInstalledRoot,
+    [string]$BindgenTarget,
+    [string]$SysrootIncludeDir,
+    [string]$VcpkgTriplet,
+    [string]$TargetTriple
+  )
+
+  $triplet = $VcpkgTriplet
+  $installRoot = Join-Path $VcpkgInstalledRoot $triplet
+  $includeDir = Join-Path $installRoot "include"
+  $libDir = Join-Path $installRoot "lib"
+  $header = Join-Path $includeDir "opus\opus_multistream.h"
+  $finalLib = Join-Path $libDir "libopus.a"
+  if ((Test-Path $header) -and (Test-Path $finalLib)) {
+    Write-Log "libopus already available at: $finalLib"
+    return
+  }
+
+  $version = "1.5.2"
+  $sourceDirectory = Join-Path $BuildRoot "external-src\opus-$version"
+  $archivePath = Join-Path $BuildRoot "downloads\opus-$version.tar.gz"
+  Ensure-ArchiveSource `
+    -Name "opus $version" `
+    -Url "https://downloads.xiph.org/releases/opus/opus-$version.tar.gz" `
+    -ArchivePath $archivePath `
+    -SourceDirectory $sourceDirectory `
+    -RequiredRelativePath "CMakeLists.txt" `
+    -BuildRoot $BuildRoot
+
+  $cmakeExe = (Get-Command cmake -ErrorAction SilentlyContinue).Source
+  $ninjaExe = (Get-Command ninja -ErrorAction SilentlyContinue).Source
+  if (-not $cmakeExe) {
+    throw "cmake.exe was not found. Install CMake before building libopus."
+  }
+  if (-not $ninjaExe) {
+    throw "ninja.exe was not found. Install Ninja before building libopus."
+  }
+
+  $jobs = Get-BuildJobCount
+  $buildDir = Join-Path $BuildRoot "external-src\opus-$version-$TargetTriple-build"
+  Remove-DirectoryInsideRoot -Path $buildDir -RootPath $BuildRoot -Description "libopus build directory"
+  New-Item -ItemType Directory -Path $buildDir, $includeDir, $libDir -Force | Out-Null
+
+  $sdkLlvmBin = Join-Path $SdkDirectory "native\llvm\bin"
+  $sdkSysroot = Join-Path $SdkDirectory "native\sysroot"
+  $clang = Convert-ToForwardSlashPath (Join-Path $sdkLlvmBin "clang.exe")
+  $llvmAr = Convert-ToForwardSlashPath (Join-Path $sdkLlvmBin "llvm-ar.exe")
+  $llvmRanlib = Convert-ToForwardSlashPath (Join-Path $sdkLlvmBin "llvm-ranlib.exe")
+  $sdkSysrootForward = Convert-ToForwardSlashPath $sdkSysroot
+  $archIncludeForward = "$sdkSysrootForward/usr/include/$SysrootIncludeDir"
+  $usrIncludeForward = "$sdkSysrootForward/usr/include"
+  $installRootForward = Convert-ToForwardSlashPath $installRoot
+  $cFlags = "--target=$BindgenTarget --sysroot=$sdkSysrootForward -I$archIncludeForward -I$usrIncludeForward -D__MUSL__ -O2 -fPIC"
+  $systemProcessor = if ($TargetTriple -match 'aarch64') { "aarch64" } else { "x86_64" }
+  $disableIntrinsics = if ($TargetTriple -eq "x86_64-unknown-linux-ohos") { "ON" } else { "OFF" }
+
+  Write-Log "Building opus $version for OHOS..."
+  Write-Log "  Source Dir: $sourceDirectory"
+  Write-Log "  Build Dir: $buildDir"
+  Write-Log "  Install Root: $installRoot"
+  Write-Log "  Disable Intrinsics: $disableIntrinsics"
+  & $cmakeExe `
+    -S $sourceDirectory `
+    -B $buildDir `
+    -G Ninja `
+    "-DCMAKE_MAKE_PROGRAM=$ninjaExe" `
+    "-DCMAKE_SYSTEM_NAME=Linux" `
+    "-DCMAKE_SYSTEM_PROCESSOR=$systemProcessor" `
+    "-DCMAKE_TRY_COMPILE_TARGET_TYPE=STATIC_LIBRARY" `
+    "-DCMAKE_BUILD_TYPE=Release" `
+    "-DCMAKE_C_COMPILER=$clang" `
+    "-DCMAKE_AR=$llvmAr" `
+    "-DCMAKE_RANLIB=$llvmRanlib" `
+    "-DCMAKE_C_FLAGS=$cFlags" `
+    "-DCMAKE_POSITION_INDEPENDENT_CODE=ON" `
+    "-DBUILD_SHARED_LIBS=OFF" `
+    "-DOPUS_BUILD_SHARED_LIBRARY=OFF" `
+    "-DOPUS_BUILD_TESTING=OFF" `
+    "-DOPUS_BUILD_PROGRAMS=OFF" `
+    "-DOPUS_DISABLE_INTRINSICS=$disableIntrinsics" `
+    "-DOPUS_INSTALL_PKG_CONFIG_MODULE=ON" `
+    "-DOPUS_INSTALL_CMAKE_CONFIG_MODULE=ON" `
+    "-DCMAKE_INSTALL_PREFIX=$installRootForward" `
+    "-DCMAKE_POLICY_VERSION_MINIMUM=3.5"
+  if ($LASTEXITCODE -ne 0) {
+    throw "Failed to configure libopus for OHOS."
+  }
+
+  & $cmakeExe --build $buildDir --config Release --target opus --parallel $jobs
+  if ($LASTEXITCODE -ne 0) {
+    throw "Failed to build libopus for OHOS."
+  }
+
+  & $cmakeExe --install $buildDir --config Release
+  if ($LASTEXITCODE -ne 0) {
+    throw "Failed to install libopus for OHOS."
+  }
+
+  if (-not ((Test-Path $header) -and (Test-Path $finalLib))) {
+    throw "libopus build completed, but required files were not produced: $header / $finalLib"
+  }
+
+  Write-Log "libopus built successfully at: $finalLib"
 }
 
 function Ensure-VideoCodecStaticLibraries {
@@ -989,6 +1104,15 @@ Ensure-VideoCodecStaticLibraries `
   -BindgenTarget $bindgenTarget `
   -SysrootIncludeDir $sysrootIncludeDir `
   -VcpkgTriplet $vcpkgTriplet
+
+Ensure-OpusStaticLibrary `
+  -BuildRoot $buildRoot `
+  -SdkDirectory $hostSdkDir `
+  -VcpkgInstalledRoot $vcpkgInstalledRoot `
+  -BindgenTarget $bindgenTarget `
+  -SysrootIncludeDir $sysrootIncludeDir `
+  -VcpkgTriplet $vcpkgTriplet `
+  -TargetTriple $TargetTriple
 
 New-Item -ItemType Directory -Path $cargoTargetDir -Force | Out-Null
 

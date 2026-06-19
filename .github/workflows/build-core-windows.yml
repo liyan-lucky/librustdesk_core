@@ -312,7 +312,7 @@ jobs:
     name: 发布双架构核心
     needs: build
     runs-on: ubuntu-latest
-    if: always() && needs.build.result != 'cancelled'
+    if: needs.build.result == 'success'
 
     steps:
       - name: 下载 arm64 产物
@@ -320,34 +320,38 @@ jobs:
         with:
           name: librustdesk_core
           path: ./release-assets
-        continue-on-error: true
 
       - name: 下载 x86_64 产物
         uses: actions/download-artifact@v4
         with:
           name: librustdesk_core_x86_64
           path: ./release-assets
-        continue-on-error: true
 
       - name: 检查产物
         run: |
-          ls -la ./release-assets/ || true
-          count=$(ls ./release-assets/*.a 2>/dev/null | wc -l)
-          if [ "$count" -eq 0 ]; then
-            echo "No artifacts found, skipping release"
-            echo "skip_release=true" >> $GITHUB_ENV
-          else
-            for f in ./release-assets/*; do
-              echo "=== $f ==="
-              echo "Size: $(wc -c < "$f") bytes"
-            done
-          fi
+          set -euo pipefail
+          ls -la ./release-assets/
+          min_bytes=100000000
+          max_bytes=250000000
+          for f in ./release-assets/librustdesk_core.a ./release-assets/librustdesk_core_x86_64.a; do
+            if [ ! -f "$f" ]; then
+              echo "Missing required release asset: $f"
+              exit 1
+            fi
+            size=$(wc -c < "$f")
+            echo "=== $f ==="
+            echo "Size: $size bytes"
+            if [ "$size" -lt "$min_bytes" ] || [ "$size" -gt "$max_bytes" ]; then
+              echo "Release asset size is outside expected range: $f ($size bytes)"
+              exit 1
+            fi
+            sha256sum "$f"
+          done
 
       - name: 检出代码（获取 run_number）
         uses: actions/checkout@v4
 
       - name: 创建 GitHub Release
-        if: env.skip_release != 'true'
         uses: softprops/action-gh-release@v2
         with:
           tag_name: core-${{ github.run_number }}
