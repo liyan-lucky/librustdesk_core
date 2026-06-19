@@ -205,8 +205,8 @@ jobs:
             "export RANLIB=`"$sdkUnix/native/llvm/bin/llvm-ranlib.exe`"",
             "export STRIP=`":`"",
             "export SYSROOT=`"$sdkUnix/native/sysroot`"",
-            "export CFLAGS=`"--target=$clangTarget --sysroot=`$SYSROOT -I`$SYSROOT/usr/include/$clangTarget -I`$SYSROOT/usr/include -fPIC -D__MUSL__ -O2`"",
-            "export CXXFLAGS=`"--target=$clangTarget --sysroot=`$SYSROOT -I`$SYSROOT/usr/include/$clangTarget -I`$SYSROOT/usr/include -fPIC -D__MUSL__ -O2`"",
+            "export CFLAGS=`"--target=$clangTarget --sysroot=`$SYSROOT -fPIC -D__MUSL__ -O2`"",
+            "export CXXFLAGS=`"--target=$clangTarget --sysroot=`$SYSROOT -fPIC -D__MUSL__ -O2`"",
             "export LDFLAGS=`"--target=$clangTarget --sysroot=`$SYSROOT`""
           )
           $lines += $extraCacheVars
