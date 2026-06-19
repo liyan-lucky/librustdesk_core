@@ -25,8 +25,8 @@ Write-Log "Script log will be saved to: $logFile"
 Write-Log "Cargo log will be saved to: $cargoLogFile"
 Write-Log "Environment log will be saved to: $envLogFile"
 
-if ($TargetTriple -ne "aarch64-unknown-linux-ohos") {
-  throw "Unsupported target triple: $TargetTriple. Current HarmonyOS package ABI is arm64-v8a only."
+if ($TargetTriple -ne "aarch64-unknown-linux-ohos" -and $TargetTriple -ne "x86_64-unknown-linux-ohos") {
+  throw "Unsupported target triple: $TargetTriple. Supported: aarch64-unknown-linux-ohos, x86_64-unknown-linux-ohos"
 }
 
 $projectRoot = Split-Path -Parent $PSScriptRoot
@@ -69,14 +69,32 @@ $cargoTargetKey = $TargetTriple.ToUpper().Replace('-', '_')
 $targetEnvKey = $TargetTriple.ToLower().Replace('-', '_').Replace('.', '_')
 $bindgenTarget = switch ($TargetTriple) {
   "aarch64-unknown-linux-ohos" { "aarch64-linux-ohos" }
+  "x86_64-unknown-linux-ohos" { "x86_64-linux-ohos" }
   default { throw "Unsupported target triple: $TargetTriple" }
 }
 $sysrootIncludeDir = switch ($TargetTriple) {
   "aarch64-unknown-linux-ohos" { "aarch64-linux-ohos" }
+  "x86_64-unknown-linux-ohos" { "x86_64-linux-ohos" }
   default { throw "Unsupported target triple: $TargetTriple" }
+}
+$vpxConfigureTarget = switch ($TargetTriple) {
+  "aarch64-unknown-linux-ohos" { "arm64-linux-gcc" }
+  "x86_64-unknown-linux-ohos" { "x86_64-linux-gcc" }
+  default { "arm64-linux-gcc" }
 }
 $configureHost = switch ($TargetTriple) {
   "aarch64-unknown-linux-ohos" { "aarch64-unknown-linux-gnu" }
+  "x86_64-unknown-linux-ohos" { "x86_64-unknown-linux-gnu" }
+  default { throw "Unsupported target triple: $TargetTriple" }
+}
+$vcpkgTriplet = switch ($TargetTriple) {
+  "aarch64-unknown-linux-ohos" { "arm64-linux" }
+  "x86_64-unknown-linux-ohos" { "x64-linux" }
+  default { throw "Unsupported target triple: $TargetTriple" }
+}
+$libArchDir = switch ($TargetTriple) {
+  "aarch64-unknown-linux-ohos" { "arm64" }
+  "x86_64-unknown-linux-ohos" { "x86_64" }
   default { throw "Unsupported target triple: $TargetTriple" }
 }
 $vcpkgRoot = if ($env:VCPKG_ROOT) {
@@ -492,10 +510,11 @@ function Ensure-LibvpxStaticLibrary {
     [string]$MsysBashExe,
     [string]$VcpkgInstalledRoot,
     [string]$BindgenTarget,
-    [string]$SysrootIncludeDir
+    [string]$SysrootIncludeDir,
+    [string]$VcpkgTriplet
   )
 
-  $triplet = "arm64-linux"
+  $triplet = $VcpkgTriplet
   $installRoot = Join-Path $VcpkgInstalledRoot $triplet
   $includeDir = Join-Path $installRoot "include"
   $libDir = Join-Path $installRoot "lib"
@@ -563,7 +582,7 @@ export VPX_OHOS_CXXFLAGS="$ohosCxxStdFlags"
 export CFLAGS="--target=$BindgenTarget --sysroot=$sdkSysrootMsys -I$archIncludeMsys -I$usrIncludeMsys -D__MUSL__ -fPIC -O2"
 export CXXFLAGS="--target=$BindgenTarget --sysroot=$sdkSysrootMsys -I$archIncludeMsys -I$usrIncludeMsys `$VPX_OHOS_CXXFLAGS -D__MUSL__ -fPIC -O2"
 export LDFLAGS="--target=$BindgenTarget --sysroot=$sdkSysrootMsys"
-../configure --target=arm64-linux-gcc --prefix="$installMsys" --libdir="$installMsys/lib" --extra-cxxflags="`$VPX_OHOS_CXXFLAGS" --enable-static --disable-shared --disable-examples --disable-tools --disable-docs --disable-unit-tests --disable-install-bins --disable-install-srcs --disable-dependency-tracking --disable-runtime-cpu-detect --enable-vp8 --enable-vp9 --enable-vp9-highbitdepth
+../configure --target=$vpxConfigureTarget --prefix="$installMsys" --libdir="$installMsys/lib" --extra-cxxflags="`$VPX_OHOS_CXXFLAGS" --enable-static --disable-shared --disable-examples --disable-tools --disable-docs --disable-unit-tests --disable-install-bins --disable-install-srcs --disable-dependency-tracking --disable-runtime-cpu-detect --enable-vp8 --enable-vp9 --enable-vp9-highbitdepth
 make -j$jobs libvpx.a
 mkdir -p "$installMsys/include/vpx" "$installMsys/lib/pkgconfig"
 cp -f libvpx.a "$installMsys/lib/libvpx.a"
@@ -622,10 +641,11 @@ function Ensure-LibyuvStaticLibrary {
     [string]$SdkDirectory,
     [string]$MsysBashExe,
     [string]$VcpkgInstalledRoot,
-    [string]$BindgenTarget
+    [string]$BindgenTarget,
+    [string]$VcpkgTriplet
   )
 
-  $triplet = "arm64-linux"
+  $triplet = $VcpkgTriplet
   $installRoot = Join-Path $VcpkgInstalledRoot $triplet
   $includeDir = Join-Path $installRoot "include"
   $libDir = Join-Path $installRoot "lib"
@@ -689,7 +709,7 @@ function Ensure-LibyuvStaticLibrary {
     -G Ninja `
     "-DCMAKE_MAKE_PROGRAM=$ninjaExe" `
     "-DCMAKE_SYSTEM_NAME=Linux" `
-    "-DCMAKE_SYSTEM_PROCESSOR=aarch64" `
+    "-DCMAKE_SYSTEM_PROCESSOR=$($TargetTriple -match 'aarch64' ? 'aarch64' : 'x86_64')" `
     "-DCMAKE_TRY_COMPILE_TARGET_TYPE=STATIC_LIBRARY" `
     "-DCMAKE_BUILD_TYPE=Release" `
     "-DCMAKE_C_COMPILER=$clang" `
@@ -702,7 +722,8 @@ function Ensure-LibyuvStaticLibrary {
     "-DCMAKE_POSITION_INDEPENDENT_CODE=ON" `
     "-DCMAKE_DISABLE_FIND_PACKAGE_JPEG=ON" `
     "-DTEST=OFF" `
-    "-DCMAKE_INSTALL_PREFIX=$installRootForward"
+    "-DCMAKE_INSTALL_PREFIX=$installRootForward" `
+    "-DCMAKE_POLICY_VERSION_MINIMUM=3.5"
   if ($LASTEXITCODE -ne 0) {
     throw "Failed to configure libyuv for OHOS."
   }
@@ -737,7 +758,8 @@ function Ensure-VideoCodecStaticLibraries {
     [string]$MsysBashExe,
     [string]$VcpkgInstalledRoot,
     [string]$BindgenTarget,
-    [string]$SysrootIncludeDir
+    [string]$SysrootIncludeDir,
+    [string]$VcpkgTriplet
   )
 
   Ensure-LibvpxStaticLibrary `
@@ -746,14 +768,16 @@ function Ensure-VideoCodecStaticLibraries {
     -MsysBashExe $MsysBashExe `
     -VcpkgInstalledRoot $VcpkgInstalledRoot `
     -BindgenTarget $BindgenTarget `
-    -SysrootIncludeDir $SysrootIncludeDir
+    -SysrootIncludeDir $SysrootIncludeDir `
+    -VcpkgTriplet $VcpkgTriplet
 
   Ensure-LibyuvStaticLibrary `
     -BuildRoot $BuildRoot `
     -SdkDirectory $SdkDirectory `
     -MsysBashExe $MsysBashExe `
     -VcpkgInstalledRoot $VcpkgInstalledRoot `
-    -BindgenTarget $BindgenTarget
+    -BindgenTarget $BindgenTarget `
+    -VcpkgTriplet $VcpkgTriplet
 }
 
 function Ensure-LibsodiumStaticLibrary {
@@ -816,7 +840,7 @@ export NM="$sdkLlvmBinMsys/llvm-nm.exe"
 export STRIP=":"
 export LDCONFIG=":"
 export CFLAGS="--target=$BindgenTarget --sysroot=$sdkSysrootMsys -I$archIncludeMsys -I$usrIncludeMsys -D__MUSL__"
-./configure --host=$ConfigureHost --prefix="$installMsys" --libdir="$installMsys/lib" --enable-shared=no
+./configure --host=$ConfigureHost --prefix="$installMsys" --libdir="$installMsys/lib" --enable-shared=no --disable-dependency-tracking
 make -j$jobs all
 make install
 cp -f "$installMsys/lib/libsodium.a" "$installMsys/lib/liblibsodium.a"
@@ -963,7 +987,8 @@ Ensure-VideoCodecStaticLibraries `
   -MsysBashExe $msysBashExe `
   -VcpkgInstalledRoot $vcpkgInstalledRoot `
   -BindgenTarget $bindgenTarget `
-  -SysrootIncludeDir $sysrootIncludeDir
+  -SysrootIncludeDir $sysrootIncludeDir `
+  -VcpkgTriplet $vcpkgTriplet
 
 New-Item -ItemType Directory -Path $cargoTargetDir -Force | Out-Null
 
@@ -1010,13 +1035,14 @@ $cmdLines = @(
   "set `"RUSTDESK_HARMONY_HOST_SDK=$hostSdkDir`"",
   "set `"OHOS_SDK_HOME=$hostSdkDir`"",
   "call `"$ohosEnvScript`" || exit /b 1",
-  "set `"PATH=%LLVM_BIN%;$env:USERPROFILE\.cargo\bin;%PATH%;$msysBinDir`"",
+  "set `"PATH=%LLVM_BIN%;$env:USERPROFILE\.cargo\bin;%PATH%;$msysBinDir;C:\msys64\mingw64\bin`"",
   "set `"LIBCLANG_PATH=$libclangPathForward`"",
   $(if ($env:RUST_TOOLCHAIN_VERSION) { "set `"RUSTUP_TOOLCHAIN=$($env:RUST_TOOLCHAIN_VERSION)`"" } else { "set `"RUSTUP_TOOLCHAIN=stable`"" }),
   "set `"CARGO_TARGET_DIR=$cargoTargetDir`"",
   "set `"VCPKG_ROOT=$vcpkgRoot`"",
   "set `"VCPKG_INSTALLED_ROOT=$vcpkgInstalledRoot`"",
-  "set `"SODIUM_LIB_DIR=$libsodiumLibDir`"",
+  "set `"SODIUM_LIB_DIR=C:\msys64\mingw64\lib`"",
+  "set `"CARGO_TARGET_${cargoTargetKey}_RUSTFLAGS=-L $libsodiumLibDir`"",
   "set `"PERL=$msysPerlForward`"",
   "set `"OPENSSL_SRC_PERL=$msysPerlForward`"",
   "set `"LD=$sdkLdForward`"",
@@ -1202,7 +1228,7 @@ New-Item -ItemType Directory -Path $outputDir -Force | Out-Null
 Copy-Item -LiteralPath $sourceLib -Destination (Join-Path $outputDir "librustdesk_harmony_bridge.a") -Force
 Write-Log "Copied to: $outputDir\librustdesk_harmony_bridge.a"
 
-$appStaticLib = Join-Path $projectRoot "entry\src\main\libs\arm64\librustdesk_core.a"
+$appStaticLib = Join-Path $projectRoot "entry\src\main\libs\$libArchDir\librustdesk_core.a"
 New-Item -ItemType Directory -Path (Split-Path -Parent $appStaticLib) -Force | Out-Null
 Copy-Item -LiteralPath $sourceLib -Destination $appStaticLib -Force
 Write-Log "Copied to: $appStaticLib"

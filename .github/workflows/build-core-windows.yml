@@ -12,12 +12,24 @@ permissions:
 
 jobs:
   build:
-    name: Windows 环境构建核心
+    name: Windows 环境构建核心 (${{ matrix.target }})
     runs-on: windows-2022
     timeout-minutes: 120
 
+    strategy:
+      matrix:
+        include:
+          - target: aarch64-unknown-linux-ohos
+            lib_dir: arm64
+            artifact_name: librustdesk_core
+            release_file: librustdesk_core.a
+          - target: x86_64-unknown-linux-ohos
+            lib_dir: x86_64
+            artifact_name: librustdesk_core_x86_64
+            release_file: librustdesk_core_x86_64.a
+
     env:
-      TARGET_TRIPLE: aarch64-unknown-linux-ohos
+      TARGET_TRIPLE: ${{ matrix.target }}
       RUST_TOOLCHAIN_VERSION: "1.88.0"
       RUSTDESK_HARMONY_BUILD_DIR: ${{ github.workspace }}\_build
       CARGO_TARGET_DIR: ${{ github.workspace }}\_build\native_rust_core\target
@@ -35,7 +47,7 @@ jobs:
       - name: 安装 Rust 工具链
         uses: dtolnay/rust-toolchain@1.88.0
         with:
-          targets: aarch64-unknown-linux-ohos
+          targets: aarch64-unknown-linux-ohos,x86_64-unknown-linux-ohos
 
       - name: 安装 MSYS2
         uses: msys2/setup-msys2@v2
@@ -108,9 +120,9 @@ jobs:
             ~/.cargo/registry
             ~/.cargo/git
             ${{ github.workspace }}\_build\native_rust_core\target
-          key: windows-ohos-cargo-${{ hashFiles('**/Cargo.lock') }}
+          key: windows-ohos-cargo-${{ matrix.target }}-${{ hashFiles('**/Cargo.lock') }}
           restore-keys: |
-            windows-ohos-cargo-
+            windows-ohos-cargo-${{ matrix.target }}-
 
       - name: 准备 libsodium-sys 源码
         shell: pwsh
@@ -129,8 +141,11 @@ jobs:
         shell: pwsh
         run: |
           $opusVersion = "1.5.2"
-          $triplet = "arm64-linux"
-          $opusRoot = Join-Path $env:RUSTDESK_HARMONY_BUILD_DIR "opus"
+          $targetArch = if ($env:TARGET_TRIPLE -eq "aarch64-unknown-linux-ohos") { "aarch64" } else { "x86_64" }
+          $configureHost = if ($env:TARGET_TRIPLE -eq "aarch64-unknown-linux-ohos") { "aarch64-unknown-linux-gnu" } else { "x86_64-unknown-linux-gnu" }
+          $clangTarget = if ($env:TARGET_TRIPLE -eq "aarch64-unknown-linux-ohos") { "aarch64-linux-ohos" } else { "x86_64-linux-ohos" }
+          $triplet = if ($env:TARGET_TRIPLE -eq "aarch64-unknown-linux-ohos") { "arm64-linux" } else { "x64-linux" }
+          $opusRoot = Join-Path $env:RUSTDESK_HARMONY_BUILD_DIR "opus-$targetArch"
           $opusZip = Join-Path $env:RUNNER_TEMP "opus-$opusVersion.tar.gz"
           $installRoot = Join-Path $env:VCPKG_INSTALLED_ROOT $triplet
           $includeDir = Join-Path $installRoot "include"
@@ -165,7 +180,7 @@ jobs:
           $installRootUnix = & $cygpath -u $installRoot
           $sdkUnix = & $cygpath -u $env:RUSTDESK_HARMONY_HOST_SDK
 
-          $bashScript = Join-Path $env:RUNNER_TEMP "build-opus-ohos.sh"
+          $bashScript = Join-Path $env:RUNNER_TEMP "build-opus-ohos-$targetArch.sh"
 
           $lines = @(
             "set -euo pipefail",
@@ -175,16 +190,16 @@ jobs:
             "export RANLIB=`"$sdkUnix/native/llvm/bin/llvm-ranlib.exe`"",
             "export STRIP=`":`"",
             "export SYSROOT=`"$sdkUnix/native/sysroot`"",
-            "export CFLAGS=`"--target=aarch64-linux-ohos --sysroot=`$SYSROOT -fPIC -D__MUSL__`"",
-            "export LDFLAGS=`"--target=aarch64-linux-ohos --sysroot=`$SYSROOT`"",
-            "./configure --host=aarch64-unknown-linux-gnu --prefix=`"$installRootUnix`" --enable-shared=no --enable-static=yes --disable-extra-programs --disable-doc",
+            "export CFLAGS=`"--target=$clangTarget --sysroot=`$SYSROOT -fPIC -D__MUSL__`"",
+            "export LDFLAGS=`"--target=$clangTarget --sysroot=`$SYSROOT`"",
+            "./configure --host=$configureHost --prefix=`"$installRootUnix`" --enable-shared=no --enable-static=yes --disable-extra-programs --disable-doc",
             "make -j2",
             "make install"
           )
 
           $lines | Set-Content -Path $bashScript -Encoding ascii
 
-          Write-Host "==== build-opus-ohos.sh ===="
+          Write-Host "==== build-opus-ohos-$targetArch.sh ===="
           Get-Content $bashScript
 
           & $bash $bashScript
@@ -200,7 +215,7 @@ jobs:
             throw "libopus.a not found: $libA"
           }
 
-          Write-Host "libopus prepared:"
+          Write-Host "libopus prepared for $targetArch:"
           Get-Item $header, $libA | Format-List FullName,Length
 
       - name: 构建 librustdesk_core.a
@@ -212,18 +227,20 @@ jobs:
             throw "build_native_bridge.ps1 failed with exit code $LASTEXITCODE"
           }
 
-          $builtLib = ".\entry\src\main\libs\arm64\librustdesk_core.a"
+          $libDir = if ($env:TARGET_TRIPLE -eq "aarch64-unknown-linux-ohos") { "arm64" } else { "x86_64" }
+          $builtLib = ".\entry\src\main\libs\$libDir\librustdesk_core.a"
           if (-not (Test-Path $builtLib)) {
             throw "Native build finished, but $builtLib was not found"
           }
 
-          Copy-Item -LiteralPath $builtLib -Destination ".\librustdesk_core.a" -Force
+          $releaseFile = if ($env:TARGET_TRIPLE -eq "aarch64-unknown-linux-ohos") { "librustdesk_core.a" } else { "librustdesk_core_x86_64.a" }
+          Copy-Item -LiteralPath $builtLib -Destination ".\$releaseFile" -Force
 
       - name: 上传调试日志
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: build-debug-logs
+          name: build-debug-logs-${{ matrix.lib_dir }}
           path: |
             build_debug_*.log
             cargo_build_*.log
@@ -234,10 +251,11 @@ jobs:
       - name: 验证最终产物
         shell: pwsh
         run: |
-          $artifact = ".\librustdesk_core.a"
+          $releaseFile = if ($env:TARGET_TRIPLE -eq "aarch64-unknown-linux-ohos") { "librustdesk_core.a" } else { "librustdesk_core_x86_64.a" }
+          $artifact = ".\$releaseFile"
 
           if (-not (Test-Path $artifact)) {
-            throw "librustdesk_core.a was not generated"
+            throw "$releaseFile was not generated"
           }
 
           Write-Host "===== Final Artifact ====="
@@ -247,26 +265,56 @@ jobs:
           $minBytes = [int64]$env:RELEASE_ARTIFACT_MIN_BYTES
           $maxBytes = [int64]$env:RELEASE_ARTIFACT_MAX_BYTES
           if ($artifactItem.Length -lt $minBytes -or $artifactItem.Length -gt $maxBytes) {
-            throw "Unexpected librustdesk_core.a size: $($artifactItem.Length) bytes. Expected release artifact between $minBytes and $maxBytes bytes; check Cargo profile before publishing."
+            throw "Unexpected $releaseFile size: $($artifactItem.Length) bytes. Expected release artifact between $minBytes and $maxBytes bytes; check Cargo profile before publishing."
           }
 
       - name: 上传 Actions 产物
         uses: actions/upload-artifact@v4
         with:
-          name: librustdesk_core
-          path: librustdesk_core.a
+          name: ${{ matrix.artifact_name }}
+          path: ${{ matrix.release_file }}
           if-no-files-found: error
-          
+
       - name: 检查发布文件
         shell: pwsh
         run: |
-          Get-Item ".\librustdesk_core.a" | Format-List Name,Length,FullName
+          $releaseFile = if ($env:TARGET_TRIPLE -eq "aarch64-unknown-linux-ohos") { "librustdesk_core.a" } else { "librustdesk_core_x86_64.a" }
+          Get-Item ".\$releaseFile" | Format-List Name,Length,FullName
 
           Write-Host "SHA256:"
-          Get-FileHash ".\librustdesk_core.a" -Algorithm SHA256
+          Get-FileHash ".\$releaseFile" -Algorithm SHA256
+
+  release:
+    name: 发布双架构核心
+    needs: build
+    runs-on: ubuntu-latest
+    if: success()
+
+    steps:
+      - name: 下载 arm64 产物
+        uses: actions/download-artifact@v4
+        with:
+          name: librustdesk_core
+          path: ./release-assets
+
+      - name: 下载 x86_64 产物
+        uses: actions/download-artifact@v4
+        with:
+          name: librustdesk_core_x86_64
+          path: ./release-assets
+
+      - name: 检查产物
+        run: |
+          ls -la ./release-assets/
+          for f in ./release-assets/*; do
+            echo "=== $f ==="
+            echo "Size: $(wc -c < "$f") bytes"
+          done
+
+      - name: 检出代码（获取 run_number）
+        uses: actions/checkout@v4
 
       - name: 创建 GitHub Release
-        if: success()
         uses: softprops/action-gh-release@v2
         with:
           tag_name: core-${{ github.run_number }}
@@ -274,17 +322,18 @@ jobs:
           body: |
             中文更新说明：
 
-            Windows 环境在线构建 librustdesk_core.a。
+            Windows 环境在线构建双架构 librustdesk_core.a。
 
             构建环境：windows-2022
             Rust 工具链：1.88.0
-            目标平台：aarch64-unknown-linux-ohos
+            目标平台：aarch64-unknown-linux-ohos + x86_64-unknown-linux-ohos
             构建配置：Cargo release profile
 
             线上产物：
             - 标签：core-${{ github.run_number }}
-            - Asset：librustdesk_core.a
-          files: librustdesk_core.a
+            - Asset：librustdesk_core.a（arm64-v8a，真机调试）
+            - Asset：librustdesk_core_x86_64.a（x86_64，虚拟设备调试）
+          files: ./release-assets/*
           overwrite_files: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
