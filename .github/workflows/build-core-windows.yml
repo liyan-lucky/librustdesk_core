@@ -157,10 +157,23 @@ jobs:
           Invoke-WebRequest -Uri "https://downloads.xiph.org/releases/opus/opus-$opusVersion.tar.gz" -OutFile $opusZip
           tar -xzf $opusZip -C $opusRoot --strip-components=1
 
-          $cmakeExe = (Get-Command cmake -ErrorAction SilentlyContinue).Source
-          $ninjaExe = (Get-Command ninja -ErrorAction SilentlyContinue).Source
-          if (-not $cmakeExe) { throw "cmake.exe not found" }
-          if (-not $ninjaExe) { throw "ninja.exe not found" }
+          $cmakeExe = "C:\Program Files\CMake\bin\cmake.exe"
+          $ninjaExe = "C:\Program Files\CMake\bin\ninja.exe"
+          if (-not (Test-Path $cmakeExe)) {
+            $cmakeExe = (Get-Command cmake -ErrorAction SilentlyContinue).Source
+          }
+          if (-not (Test-Path $ninjaExe)) {
+            $ninjaCandidate = Join-Path (Split-Path -Parent $cmakeExe) "ninja.exe"
+            if (Test-Path $ninjaCandidate) {
+              $ninjaExe = $ninjaCandidate
+            } else {
+              $ninjaExe = (Get-Command ninja -ErrorAction SilentlyContinue).Source
+            }
+          }
+          if (-not $cmakeExe -or -not (Test-Path $cmakeExe)) { throw "cmake.exe not found" }
+          if (-not $ninjaExe -or -not (Test-Path $ninjaExe)) { throw "ninja.exe not found" }
+          Write-Host "cmake: $cmakeExe"
+          Write-Host "ninja: $ninjaExe"
 
           $buildDir = Join-Path $env:RUSTDESK_HARMONY_BUILD_DIR "opus-$targetArch-build"
           if (Test-Path $buildDir) { Remove-Item $buildDir -Recurse -Force }
@@ -206,10 +219,20 @@ jobs:
             "-DOPUS_INSTALL_PKG_CONFIG_MODULE=OFF" `
             "-DOPUS_INSTALL_CMAKE_CONFIG_MODULE=OFF" `
             "-DCMAKE_POLICY_VERSION_MINIMUM=3.5"
-          if ($LASTEXITCODE -ne 0) { throw "Failed to configure libopus for OHOS ($targetArch)." }
+          if ($LASTEXITCODE -ne 0) {
+            Write-Host "=== CMake configure failed ==="
+            $errorLog = Join-Path $buildDir "CMakeFiles\CMakeError.log"
+            $outputLog = Join-Path $buildDir "CMakeFiles\CMakeOutput.log"
+            if (Test-Path $errorLog) { Write-Host "=== CMakeError.log ==="; Get-Content $errorLog }
+            if (Test-Path $outputLog) { Write-Host "=== CMakeOutput.log ==="; Get-Content $outputLog }
+            throw "Failed to configure libopus for OHOS ($targetArch)."
+          }
 
           & $cmakeExe --build $buildDir --config Release --parallel 2
-          if ($LASTEXITCODE -ne 0) { throw "Failed to build libopus for OHOS ($targetArch)." }
+          if ($LASTEXITCODE -ne 0) {
+            Write-Host "=== CMake build failed ==="
+            throw "Failed to build libopus for OHOS ($targetArch)."
+          }
 
           & $cmakeExe --install $buildDir
           if ($LASTEXITCODE -ne 0) { throw "Failed to install libopus for OHOS ($targetArch)." }
