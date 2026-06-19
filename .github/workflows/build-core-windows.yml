@@ -174,7 +174,7 @@ jobs:
           $llvmRanlib = "$sdkLlvmBin\llvm-ranlib.exe" -replace '\\', '/'
           $sdkSysrootFwd = $sdkSysroot -replace '\\', '/'
           $installRootFwd = $installRoot -replace '\\', '/'
-          $cFlags = "--target=$clangTarget --sysroot=$sdkSysrootFwd -D__MUSL__ -fPIC -O2"
+          $cFlags = "--target=$clangTarget -D__MUSL__ -fPIC -O2"
           $cxxFlags = $cFlags
 
           Write-Host "Building libopus $opusVersion for OHOS ($targetArch) with CMake..."
@@ -185,6 +185,7 @@ jobs:
             "-DCMAKE_MAKE_PROGRAM=$ninjaExe" `
             "-DCMAKE_SYSTEM_NAME=Linux" `
             "-DCMAKE_SYSTEM_PROCESSOR=$targetArch" `
+            "-DCMAKE_SYSROOT=$sdkSysrootFwd" `
             "-DCMAKE_TRY_COMPILE_TARGET_TYPE=STATIC_LIBRARY" `
             "-DCMAKE_BUILD_TYPE=Release" `
             "-DCMAKE_C_COMPILER=$clang" `
@@ -193,16 +194,15 @@ jobs:
             "-DCMAKE_RANLIB=$llvmRanlib" `
             "-DCMAKE_C_FLAGS=$cFlags" `
             "-DCMAKE_CXX_FLAGS=$cxxFlags" `
-            "-DCMAKE_EXE_LINKER_FLAGS=--target=$clangTarget --sysroot=$sdkSysrootFwd" `
+            "-DCMAKE_EXE_LINKER_FLAGS=--target=$clangTarget" `
             "-DCMAKE_POSITION_INDEPENDENT_CODE=ON" `
             "-DCMAKE_INSTALL_PREFIX=$installRootFwd" `
             "-DBUILD_SHARED_LIBS=OFF" `
             "-DOPUS_BUILD_SHARED_LIBRARY=OFF" `
             "-DOPUS_BUILD_TESTING=OFF" `
+            "-DOPUS_BUILD_PROGRAMS=OFF" `
             "-DOPUS_DISABLE_INTRINSICS=ON" `
             "-DOPUS_FIXED_POINT=OFF" `
-            "-DOPUS_BUILD_PROGRAMS=OFF" `
-            "-DOPUS_BUILD_TESTING=OFF" `
             "-DOPUS_INSTALL_PKG_CONFIG_MODULE=OFF" `
             "-DOPUS_INSTALL_CMAKE_CONFIG_MODULE=OFF" `
             "-DCMAKE_POLICY_VERSION_MINIMUM=3.5"
