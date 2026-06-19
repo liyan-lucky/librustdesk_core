@@ -242,7 +242,7 @@ jobs:
           Write-Host "=== Vcpkg installed ==="
           if (Test-Path $env:VCPKG_INSTALLED_ROOT) { Get-ChildItem $env:VCPKG_INSTALLED_ROOT -Recurse -Filter "*.a" | ForEach-Object { Write-Host "  $($_.FullName) $($_.Length)" } }
           Write-Host "=== Starting build ==="
-          & powershell -ExecutionPolicy Bypass -File .\scripts\build_native_bridge.ps1 -TargetTriple "$env:TARGET_TRIPLE" -Profile release
+          & pwsh -ExecutionPolicy Bypass -File .\scripts\build_native_bridge.ps1 -TargetTriple "$env:TARGET_TRIPLE" -Profile release
 
           if ($LASTEXITCODE -ne 0) {
             throw "build_native_bridge.ps1 failed with exit code $LASTEXITCODE"

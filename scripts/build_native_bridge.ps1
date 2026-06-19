@@ -709,7 +709,7 @@ function Ensure-LibyuvStaticLibrary {
     -G Ninja `
     "-DCMAKE_MAKE_PROGRAM=$ninjaExe" `
     "-DCMAKE_SYSTEM_NAME=Linux" `
-    "-DCMAKE_SYSTEM_PROCESSOR=$($TargetTriple -match 'aarch64' ? 'aarch64' : 'x86_64')" `
+    "-DCMAKE_SYSTEM_PROCESSOR=$(if ($TargetTriple -match 'aarch64') { 'aarch64' } else { 'x86_64' })" `
     "-DCMAKE_TRY_COMPILE_TARGET_TYPE=STATIC_LIBRARY" `
     "-DCMAKE_BUILD_TYPE=Release" `
     "-DCMAKE_C_COMPILER=$clang" `
