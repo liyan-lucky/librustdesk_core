@@ -293,11 +293,11 @@ jobs:
           Write-Host "SHA256:"
           Get-FileHash ".\$releaseFile" -Algorithm SHA256
 
-   release:
-     name: 发布双架构核心
-     needs: build
-     runs-on: ubuntu-latest
-     if: always() && needs.build.result != 'cancelled'
+  release:
+    name: 发布双架构核心
+    needs: build
+    runs-on: ubuntu-latest
+    if: always() && needs.build.result != 'cancelled'
 
     steps:
       - name: 下载 arm64 产物
