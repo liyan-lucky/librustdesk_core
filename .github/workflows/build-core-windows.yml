@@ -17,6 +17,7 @@ jobs:
     timeout-minutes: 120
 
     strategy:
+      fail-fast: false
       matrix:
         include:
           - target: aarch64-unknown-linux-ohos
@@ -292,11 +293,11 @@ jobs:
           Write-Host "SHA256:"
           Get-FileHash ".\$releaseFile" -Algorithm SHA256
 
-  release:
-    name: 发布双架构核心
-    needs: build
-    runs-on: ubuntu-latest
-    if: success()
+   release:
+     name: 发布双架构核心
+     needs: build
+     runs-on: ubuntu-latest
+     if: always() && needs.build.result != 'cancelled'
 
     steps:
       - name: 下载 arm64 产物
@@ -304,25 +305,34 @@ jobs:
         with:
           name: librustdesk_core
           path: ./release-assets
+        continue-on-error: true
 
       - name: 下载 x86_64 产物
         uses: actions/download-artifact@v4
         with:
           name: librustdesk_core_x86_64
           path: ./release-assets
+        continue-on-error: true
 
       - name: 检查产物
         run: |
-          ls -la ./release-assets/
-          for f in ./release-assets/*; do
-            echo "=== $f ==="
-            echo "Size: $(wc -c < "$f") bytes"
-          done
+          ls -la ./release-assets/ || true
+          count=$(ls ./release-assets/*.a 2>/dev/null | wc -l)
+          if [ "$count" -eq 0 ]; then
+            echo "No artifacts found, skipping release"
+            echo "skip_release=true" >> $GITHUB_ENV
+          else
+            for f in ./release-assets/*; do
+              echo "=== $f ==="
+              echo "Size: $(wc -c < "$f") bytes"
+            done
+          fi
 
       - name: 检出代码（获取 run_number）
         uses: actions/checkout@v4
 
       - name: 创建 GitHub Release
+        if: env.skip_release != 'true'
         uses: softprops/action-gh-release@v2
         with:
           tag_name: core-${{ github.run_number }}
