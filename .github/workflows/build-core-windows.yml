@@ -227,6 +227,21 @@ jobs:
       - name: 构建 librustdesk_core.a
         shell: pwsh
         run: |
+          Write-Host "=== Environment ==="
+          Write-Host "TARGET_TRIPLE: $env:TARGET_TRIPLE"
+          Write-Host "RUSTDESK_HARMONY_HOST_SDK: $env:RUSTDESK_HARMONY_HOST_SDK"
+          Write-Host "RUSTDESK_HARMONY_BUILD_DIR: $env:RUSTDESK_HARMONY_BUILD_DIR"
+          Write-Host "VCPKG_ROOT: $env:VCPKG_ROOT"
+          Write-Host "VCPKG_INSTALLED_ROOT: $env:VCPKG_INSTALLED_ROOT"
+          Write-Host "CARGO_TARGET_DIR: $env:CARGO_TARGET_DIR"
+          Write-Host "cargo: $(Get-Command cargo -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Source)"
+          Write-Host "rustc: $(Get-Command rustc -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Source)"
+          Write-Host "cmake: $(Get-Command cmake -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Source)"
+          Write-Host "ninja: $(Get-Command ninja -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Source)"
+          Write-Host "bash: $(Get-Command bash -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Source)"
+          Write-Host "=== Vcpkg installed ==="
+          if (Test-Path $env:VCPKG_INSTALLED_ROOT) { Get-ChildItem $env:VCPKG_INSTALLED_ROOT -Recurse -Filter "*.a" | ForEach-Object { Write-Host "  $($_.FullName) $($_.Length)" } }
+          Write-Host "=== Starting build ==="
           & powershell -ExecutionPolicy Bypass -File .\scripts\build_native_bridge.ps1 -TargetTriple "$env:TARGET_TRIPLE" -Profile release
 
           if ($LASTEXITCODE -ne 0) {
