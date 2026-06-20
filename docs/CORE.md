@@ -1285,3 +1285,22 @@ HarmonyOS 版使用 **staticlib + CMake + NAPI** 架构：
 - When a Windows binary such as SDK `clang++.exe` is launched from MSYS bash, do not glue an MSYS path to an option (`-isystem/msys/path`). Use `-isystem /msys/path` so MSYS path conversion can hand clang a Windows path.
 - If the online SDK zip is a minimal `native/llvm + native/sysroot` package, do not assume SDK libc++ headers are present and do not use MSYS2 libc++ as a fallback for OHOS clang. Prefer avoiding unused C++ targets, as done for libvpx `libvpxrc.a`; only use `RUSTDESK_HARMONY_LIBCXX_INCLUDE` when it points to headers known to match the SDK clang.
 - For full local rebuilds, keep `VCPKG_ROOT` and `VCPKG_INSTALLED_ROOT` aligned. Setting only a custom `VCPKG_INSTALLED_ROOT` can let `scrap` find VPX/YUV while `magnum-opus` still looks under `VCPKG_ROOT\installed` and fails on `opus/opus_multistream.h`.
+
+## 2026-06-20 Harmony 会话默认选项与编码切换
+
+### 根因
+
+- App 曾写入非官方键 `video-codec-preference`，实际解码器读取 `codec-preference`。
+- `apply_session_option` 对编码只走通用 `session.set_option()` 时只保存 PeerConfig，不会让当前会话重新上报支持的解码列表。
+- Harmony `main_set_local_option()` 的多数显示默认项只存在进程内 HashMap；新 Session 创建时没有把这些默认项写入 PeerConfig，因此设置页的“默认选项”重启后或连接新 ID 时可能无效。
+
+### 修复与验证
+
+- `codec-preference` 分支保存后调用 `session.update_supported_decodings()`，当前会话立即触发编码能力更新。
+- Harmony 显示/质量/编码及其他会话默认项持久化到 `Config`，`session_start()` 初始化 peer 后统一写入 PeerConfig；`display-scale-mode/custom-zoom-percent` 仅持久化供 App 读取。
+- `scripts/build_native_bridge.ps1` 的 arm64 与 x86_64 release 构建均退出 `0`；产物分别为 `130,754,720` 与 `129,520,124` bytes。
+
+### 经验
+
+- 新 Session 的默认选项必须在 peer 初始化后写入 PeerConfig；只写 App 进程内缓存无法跨重启，也不会自然进入下一次连接。
+- 编码偏好使用官方键 `codec-preference`。当前会话切换时再调用 `update_supported_decodings()`；不要在握手前无条件发送解码能力更新。

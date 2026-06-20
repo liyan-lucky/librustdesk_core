@@ -63,6 +63,33 @@ fn local_options() -> &'static Mutex<HashMap<String, String>> {
     LOCAL_OPTIONS.get_or_init(|| Mutex::new(HashMap::new()))
 }
 
+const HARMONY_SESSION_DEFAULT_OPTIONS: &[&str] = &[
+    "image-quality",
+    "custom-image-quality",
+    "custom-fps",
+    "keyboard-mode",
+    "codec-preference",
+    "view-only",
+    "show-remote-cursor",
+    "follow-remote-cursor",
+    "follow-remote-window",
+    "show-quality-monitor",
+    "disable-audio",
+    "disable-clipboard",
+    "lock-after-session-end",
+    "privacy-mode",
+    "true-color-444",
+    "reverse-scroll",
+    "swap-left-right-mouse",
+    "keep-terminal-on-disconnect",
+];
+
+fn is_harmony_persistent_option(key: &str) -> bool {
+    HARMONY_SESSION_DEFAULT_OPTIONS.contains(&key)
+        || key == "display-scale-mode"
+        || key == "custom-zoom-percent"
+}
+
 fn latest_video_frame() -> &'static Mutex<Option<VideoFrameState>> {
     LATEST_VIDEO_FRAME.get_or_init(|| Mutex::new(None))
 }
@@ -769,6 +796,12 @@ pub fn session_start(
         None,
         None,
     );
+    for option_key in HARMONY_SESSION_DEFAULT_OPTIONS {
+        let option_value = get_local_option(option_key);
+        if !option_value.is_empty() {
+            session.set_option((*option_key).to_owned(), option_value);
+        }
+    }
     let round = session.connection_round_state.lock().unwrap().new_round();
     *active_session().lock().unwrap() = Some(session.clone());
     std::thread::spawn(move || {
@@ -812,12 +845,16 @@ pub fn main_get_local_option(key: &str) -> String {
             return value;
         }
     }
-    local_options()
+    let value = local_options()
         .lock()
         .unwrap()
         .get(key)
         .cloned()
-        .unwrap_or_default()
+        .unwrap_or_default();
+    if value.is_empty() && is_harmony_persistent_option(key) {
+        return config::Config::get_option(key);
+    }
+    value
 }
 
 /// Returns the value of a saved peer option by key.
@@ -1206,6 +1243,10 @@ pub fn main_set_local_option(key: &str, value: &str) {
         .lock()
         .unwrap()
         .insert(key.to_owned(), value.to_owned());
+    if is_harmony_persistent_option(key) {
+        config::Config::set_option(key.to_owned(), value.to_owned());
+        return;
+    }
     if key == "access_token" || key == "user_info" || key == "lang" {
         LocalConfig::set_option(key.to_owned(), value.to_owned());
         return;
@@ -1257,6 +1298,11 @@ pub fn apply_session_option(key: &str, value: &str) -> bool {
             }
             Err(_) => false,
         },
+        "codec-preference" => {
+            session.set_option(key.to_owned(), value.to_owned());
+            session.update_supported_decodings();
+            true
+        }
         "record-session" => {
             session.record_screen(option_is_enabled(value));
             true
