@@ -345,7 +345,7 @@ impl RendezvousMediator {
         let address_family_mismatch = is_ipv4(&self.addr) != peer_addr.is_ipv4();
         if address_family_mismatch {
             log::info!(
-                "OHOS skip direct TCP to {} from {} because address families differ; relay_server: {}",
+                "OHOS skip direct TCP to {} from {:?} because address families differ; relay_server: {}",
                 peer_addr,
                 self.addr,
                 relay_server
@@ -601,12 +601,13 @@ async fn udp_nat_listen(
         crate::server::create_tcp_connection(server, stream.1, peer_addr_v4, true, None).await?;
         Ok(())
     };
-    func.await.map_err(|e: anyhow::Error| {
-        anyhow::anyhow!(
+    func.await.map_err(|e| {
+        log::error!(
             "OHOS stop listening on {:?} for remote {peer_addr} with KCP, {:?} elapsed: {e}",
             socket_cloned.local_addr(),
             tm.elapsed()
-        )
+        );
+        e
     })?;
     Ok(())
 }
