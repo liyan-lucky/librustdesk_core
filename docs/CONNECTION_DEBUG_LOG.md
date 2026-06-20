@@ -21,8 +21,8 @@
 
 - `powershell -File scripts\build_native_bridge.ps1 -TargetTriple x86_64-unknown-linux-ohos -Profile release` 通过，产物 `128,712,156` bytes，SHA256 `7D0AA289F050AD7D4D06B21516E0B39707570C08A28C700259245EFDA113A1CB`。
 - `powershell -File scripts\build_native_bridge.ps1 -TargetTriple aarch64-unknown-linux-ohos -Profile release` 通过，产物 `130,215,616` bytes，SHA256 `E82E9FE47557EE9771FA5E9C7539EF09670326038F59E8E5748481AE53352B30`。
-- 待推送后继续等待 GitHub Actions Windows 双架构构建和 release 结果；线上结果完成后回填最终 run/tag。
-- 空 `core-24` release/tag 删除后重新触发 Windows 双架构构建；最终 run/tag 待新 workflow 完成后回填。
+- run `27853110949` 成功发布 `core-25` 双资产：arm64 `132,777,178` bytes / SHA256 `EE881BEB9DE44835EE126BACC86D3B373E779334FB58A5D63F4B4D7974077314`，x86_64 `130,416,964` bytes / SHA256 `8ACD4AD130EAE9A36D4AE04A93860193CE8773E91E5CCEA5E34E815BFE633ED4`。
+- 空 `core-24` release/tag 已删除；后续 App 已下载 latest core-25 完成双架构 HAP 构建、验包、66 项审计和无线安装启动验证。
 
 ## 2026-06-15 core-81 发布：captureRequired 与 OHOS scrap 入站帧源
 
