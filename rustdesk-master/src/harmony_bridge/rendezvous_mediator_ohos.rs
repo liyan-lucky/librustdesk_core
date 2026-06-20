@@ -27,6 +27,8 @@ type Message = RendezvousMessage;
 
 lazy_static::lazy_static! {
     static ref SOLVING_PK_MISMATCH: Mutex<String> = Default::default();
+    static ref LAST_MSG: Mutex<(std::net::SocketAddr, Instant)> = Mutex::new((std::net::SocketAddr::new([0; 4].into(), 0), Instant::now()));
+    static ref LAST_RELAY_MSG: Mutex<(std::net::SocketAddr, Instant)> = Mutex::new((std::net::SocketAddr::new([0; 4].into(), 0), Instant::now()));
 }
 
 pub(crate) static NEEDS_DEPLOY: AtomicBool = AtomicBool::new(false);
@@ -308,6 +310,11 @@ impl RendezvousMediator {
 
     async fn handle_punch_hole(&self, ph: PunchHole, server: ServerPtr) -> ResultType<()> {
         let peer_addr = hbb_common::AddrMangle::decode(&ph.socket_addr);
+        let last = *LAST_MSG.lock().await;
+        *LAST_MSG.lock().await = (peer_addr, Instant::now());
+        if last.0 == peer_addr && last.1.elapsed().as_millis() < 100 {
+            return Ok(());
+        }
         log::info!("OHOS received PunchHole from {:?}", peer_addr);
         crate::harmony_bridge::core::queue_event(
             "incoming-connection",
@@ -398,6 +405,11 @@ impl RendezvousMediator {
 
     async fn handle_request_relay(&self, rr: RequestRelay, server: ServerPtr) -> ResultType<()> {
         let peer_addr = hbb_common::AddrMangle::decode(&rr.socket_addr);
+        let last = *LAST_RELAY_MSG.lock().await;
+        *LAST_RELAY_MSG.lock().await = (peer_addr, Instant::now());
+        if last.0 == peer_addr && last.1.elapsed().as_millis() < 100 {
+            return Ok(());
+        }
         log::info!("OHOS received RequestRelay from {:?}", peer_addr);
         crate::harmony_bridge::core::queue_event(
             "incoming-connection",
@@ -478,6 +490,11 @@ impl RendezvousMediator {
 
     async fn handle_intranet(&self, fla: FetchLocalAddr, server: ServerPtr) -> ResultType<()> {
         let addr = hbb_common::AddrMangle::decode(&fla.socket_addr);
+        let last = *LAST_MSG.lock().await;
+        *LAST_MSG.lock().await = (addr, Instant::now());
+        if last.0 == addr && last.1.elapsed().as_millis() < 100 {
+            return Ok(());
+        }
         log::info!("OHOS received FetchLocalAddr from {:?}", addr);
 
         let peer_addr_v6 = hbb_common::AddrMangle::decode(&fla.socket_addr_v6);

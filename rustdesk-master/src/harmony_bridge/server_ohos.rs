@@ -864,6 +864,7 @@ lazy_static::lazy_static! {
 
 lazy_static::lazy_static! {
     static ref ALIVE_CONNS: Arc<Mutex<Vec<i32>>> = Default::default();
+    static ref PEER_CONNS: Arc<Mutex<HashMap<String, i32>>> = Default::default();
 }
 
 const TEST_DELAY_TIMEOUT: Duration = Duration::from_secs(1);
@@ -1044,6 +1045,35 @@ async fn handle_incoming_message(
             }
 
             *authorized = true;
+
+            let peer_id = lr.my_id.clone();
+            if let Some(old_id) = PEER_CONNS.lock().unwrap().insert(peer_id.clone(), id) {
+                if old_id != id && ALIVE_CONNS.lock().unwrap().contains(&old_id) {
+                    log::info!(
+                        "OHOS Connection #{} replacing old connection #{} from peer {}",
+                        id, old_id, peer_id
+                    );
+                    if let Some(s) = server.upgrade() {
+                        let s = s.read().unwrap();
+                        if let Some(old_conn) = s.connections.get(&old_id) {
+                            if let Some(tx) = &old_conn.tx {
+                                let _ = tx.send((Instant::now(), Arc::new({
+                                    let mut m = Message::new();
+                                    m.set_misc(Misc {
+                                        close_reason: "Replaced by new connection".into(),
+                                        ..Default::default()
+                                    });
+                                    m
+                                })));
+                            }
+                        }
+                    }
+                    ALIVE_CONNS.lock().unwrap().retain(|&x| x != old_id);
+                    if let Some(s) = server.upgrade() {
+                        s.write().unwrap().remove_connection(&old_id);
+                    }
+                }
+            }
 
             let mut res = LoginResponse::new();
             let mut pi = PeerInfo {
@@ -1296,6 +1326,7 @@ fn constant_time_eq(a: &[u8], b: &[u8]) -> bool {
 
 fn cleanup_connection(id: i32, server: &ServerPtrWeak, inner: &ConnInner) {
     ALIVE_CONNS.lock().unwrap().retain(|&x| x != id);
+    PEER_CONNS.lock().unwrap().retain(|_, v| *v != id);
     if let Some(s) = server.upgrade() {
         s.write().unwrap().remove_connection(inner);
     }
