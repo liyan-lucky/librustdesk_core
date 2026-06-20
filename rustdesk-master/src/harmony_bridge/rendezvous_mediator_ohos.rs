@@ -8,13 +8,14 @@ use std::{
 
 use hbb_common::{
     allow_err,
+    bytes::Bytes,
     config::{self, option2bool, Config, CONNECT_TIMEOUT, RENDEZVOUS_PORT},
     futures::future::join_all,
     log,
     protobuf::{Enum as _, Message as _},
     rendezvous_proto::*,
     sleep,
-    socket_client::{self, new_udp_for},
+    socket_client::{self, is_ipv4, new_udp_for},
     tokio::{self, select, sync::Mutex, time::interval},
     udp::FramedSocket,
     AddrMangle, IntoTargetAddr, ResultType, TargetAddr,
@@ -285,6 +286,13 @@ impl RendezvousMediator {
                 Config::set_option("rendezvous-servers".to_owned(), cu.rendezvous_servers.join(","));
                 Config::set_serial(cu.serial);
             }
+            Some(rendezvous_message::Union::FetchLocalAddr(fla)) => {
+                let rz = self.clone();
+                let server = server.clone();
+                tokio::spawn(async move {
+                    allow_err!(rz.handle_intranet(fla, server).await);
+                });
+            }
             Some(rendezvous_message::Union::TestNatRequest(_)) => {
                 let mut msg_out = Message::new();
                 msg_out.set_test_nat_response(TestNatResponse {
@@ -307,8 +315,13 @@ impl RendezvousMediator {
             "",
         );
 
+        let peer_addr_v6 = hbb_common::AddrMangle::decode(&ph.socket_addr_v6);
         let relay = hbb_common::config::Config::is_proxy() || ph.force_relay;
         let relay_server = self.get_relay_server(ph.relay_server);
+        let mut socket_addr_v6: Bytes = Default::default();
+        if peer_addr_v6.port() > 0 && !relay {
+            socket_addr_v6 = start_ipv6(peer_addr_v6, peer_addr, server.clone()).await;
+        }
 
         if ph.nat_type.enum_value() == Ok(hbb_common::protos::rendezvous::NatType::SYMMETRIC)
             || hbb_common::config::Config::get_nat_type()
@@ -324,7 +337,29 @@ impl RendezvousMediator {
                     server,
                     true,
                     true,
-                    Default::default(),
+                    socket_addr_v6,
+                )
+                .await;
+        }
+
+        let address_family_mismatch = is_ipv4(&self.addr) != peer_addr.is_ipv4();
+        if address_family_mismatch {
+            log::info!(
+                "OHOS skip direct TCP to {} from {} because address families differ; relay_server: {}",
+                peer_addr,
+                self.addr,
+                relay_server
+            );
+            let uuid = hbb_common::rand::random::<i32>().to_string();
+            return self
+                .create_relay(
+                    ph.socket_addr.into(),
+                    relay_server,
+                    uuid,
+                    server,
+                    true,
+                    true,
+                    socket_addr_v6,
                 )
                 .await;
         }
@@ -339,6 +374,7 @@ impl RendezvousMediator {
             relay_server,
             nat_type: nat_type.into(),
             version: crate::VERSION.to_owned(),
+            socket_addr_v6,
             ..Default::default()
         };
 
@@ -439,6 +475,71 @@ impl RendezvousMediator {
         }
         relay_server
     }
+
+    async fn handle_intranet(&self, fla: FetchLocalAddr, server: ServerPtr) -> ResultType<()> {
+        let addr = hbb_common::AddrMangle::decode(&fla.socket_addr);
+        log::info!("OHOS received FetchLocalAddr from {:?}", addr);
+
+        let peer_addr_v6 = hbb_common::AddrMangle::decode(&fla.socket_addr_v6);
+        let relay_server = self.get_relay_server(fla.relay_server.clone());
+        let relay = Config::is_proxy();
+        let mut socket_addr_v6: Bytes = Default::default();
+        if peer_addr_v6.port() > 0 && !relay {
+            socket_addr_v6 = start_ipv6(peer_addr_v6, addr, server.clone()).await;
+        }
+
+        let address_family_mismatch = is_ipv4(&self.addr) != addr.is_ipv4();
+        if is_ipv4(&self.addr) && !relay && !config::is_disable_tcp_listen() && !address_family_mismatch {
+            if let Err(err) = self
+                .handle_intranet_(fla.clone(), server.clone(), relay_server.clone(), socket_addr_v6.clone())
+                .await
+            {
+                log::debug!("OHOS Failed to handle intranet: {:?}, will try relay", err);
+            } else {
+                return Ok(());
+            }
+        }
+        let uuid = hbb_common::rand::random::<i32>().to_string();
+        self.create_relay(
+            fla.socket_addr.into(),
+            relay_server,
+            uuid,
+            server,
+            true,
+            true,
+            socket_addr_v6,
+        )
+        .await
+    }
+
+    async fn handle_intranet_(
+        &self,
+        fla: FetchLocalAddr,
+        server: ServerPtr,
+        relay_server: String,
+        socket_addr_v6: Bytes,
+    ) -> ResultType<()> {
+        let peer_addr = hbb_common::AddrMangle::decode(&fla.socket_addr);
+        log::debug!("OHOS Handle intranet from {:?}", peer_addr);
+        let mut socket = hbb_common::socket_client::connect_tcp(&*self.host, CONNECT_TIMEOUT).await?;
+        let local_addr = socket.local_addr();
+        let local_addr: std::net::SocketAddr =
+            format!("{}:{}", local_addr.ip(), local_addr.port()).parse()?;
+        let mut msg_out = Message::new();
+        msg_out.set_local_addr(LocalAddr {
+            id: Config::get_id(),
+            socket_addr: hbb_common::AddrMangle::encode(peer_addr).into(),
+            local_addr: hbb_common::AddrMangle::encode(local_addr).into(),
+            relay_server,
+            version: crate::VERSION.to_owned(),
+            socket_addr_v6,
+            ..Default::default()
+        });
+        let bytes = msg_out.write_to_bytes()?;
+        socket.send_raw(bytes).await?;
+        crate::accept_connection(server, socket, peer_addr, true).await;
+        Ok(())
+    }
 }
 
 fn new_server() -> ServerPtr {
@@ -462,6 +563,52 @@ fn start_lan_listener_once() {
             crate::harmony_bridge::core::queue_event("lan-listener", &format!("failed: {}", err), "");
         }
     });
+}
+
+async fn start_ipv6(
+    peer_addr_v6: std::net::SocketAddr,
+    peer_addr_v4: std::net::SocketAddr,
+    server: ServerPtr,
+) -> Bytes {
+    crate::test_ipv6().await;
+    if let Some((socket, local_addr_v6)) = crate::get_ipv6_socket().await {
+        let server = server.clone();
+        tokio::spawn(async move {
+            allow_err!(udp_nat_listen(socket, peer_addr_v6, peer_addr_v4, server).await);
+        });
+        return local_addr_v6;
+    }
+    Default::default()
+}
+
+async fn udp_nat_listen(
+    socket: Arc<tokio::net::UdpSocket>,
+    peer_addr: std::net::SocketAddr,
+    peer_addr_v4: std::net::SocketAddr,
+    server: ServerPtr,
+) -> ResultType<()> {
+    let tm = Instant::now();
+    let socket_cloned = socket.clone();
+    let func = async {
+        socket.connect(peer_addr).await?;
+        let res = crate::punch_udp(socket.clone(), true).await?;
+        let stream = crate::kcp_stream::KcpStream::accept(
+            socket,
+            std::time::Duration::from_millis(CONNECT_TIMEOUT as _),
+            res,
+        )
+        .await?;
+        crate::server::create_tcp_connection(server, stream.1, peer_addr_v4, true, None).await?;
+        Ok(())
+    };
+    func.await.map_err(|e: anyhow::Error| {
+        anyhow::anyhow!(
+            "OHOS stop listening on {:?} for remote {peer_addr} with KCP, {:?} elapsed: {e}",
+            socket_cloned.local_addr(),
+            tm.elapsed()
+        )
+    })?;
+    Ok(())
 }
 
 pub(crate) fn reset_needs_deploy_notification() {
