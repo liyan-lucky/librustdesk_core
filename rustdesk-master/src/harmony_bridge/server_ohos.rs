@@ -1057,14 +1057,11 @@ async fn handle_incoming_message(
                         let s = s.read().unwrap();
                         if let Some(old_conn) = s.connections.get(&old_id) {
                             if let Some(tx) = &old_conn.tx {
-                                let _ = tx.send((Instant::now(), Arc::new({
-                                    let mut m = Message::new();
-                                    m.set_misc(Misc {
-                                        close_reason: "Replaced by new connection".into(),
-                                        ..Default::default()
-                                    });
-                                    m
-                                })));
+                                let mut misc = Misc::new();
+                                misc.set_close_reason("Replaced by new connection".to_string());
+                                let mut msg_out = Message::new();
+                                msg_out.set_misc(misc);
+                                let _ = tx.send((Instant::now(), Arc::new(msg_out)));
                             }
                         }
                     }
