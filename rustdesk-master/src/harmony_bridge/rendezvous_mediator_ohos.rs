@@ -589,7 +589,7 @@ async fn udp_nat_listen(
 ) -> ResultType<()> {
     let tm = Instant::now();
     let socket_cloned = socket.clone();
-    let func = async {
+    let func: ResultType<()> = async {
         socket.connect(peer_addr).await?;
         let res = crate::punch_udp(socket.clone(), true).await?;
         let stream = crate::kcp_stream::KcpStream::accept(
@@ -601,14 +601,13 @@ async fn udp_nat_listen(
         crate::server::create_tcp_connection(server, stream.1, peer_addr_v4, true, None).await?;
         Ok(())
     };
-    func.await.map_err(|e| {
+    if let Err(e) = func.await {
         log::error!(
             "OHOS stop listening on {:?} for remote {peer_addr} with KCP, {:?} elapsed: {e}",
             socket_cloned.local_addr(),
             tm.elapsed()
         );
-        e
-    })?;
+    }
     Ok(())
 }
 
