@@ -1067,7 +1067,7 @@ async fn handle_incoming_message(
                     }
                     ALIVE_CONNS.lock().unwrap().retain(|&x| x != old_id);
                     if let Some(s) = server.upgrade() {
-                        s.write().unwrap().remove_connection(&old_id);
+                        s.write().unwrap().connections.remove(&old_id);
                     }
                 }
             }
