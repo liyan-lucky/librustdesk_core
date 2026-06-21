@@ -1,6 +1,8 @@
 # Ubuntu 交叉编译 RustDesk HarmonyOS 核心库 — 实战指南
 
 > 目标：在 Ubuntu 上为 `aarch64-unknown-linux-ohos` 交叉编译 `librustdesk_harmony_bridge.a`，
+
+> 2026-06-21 23:23：本文继续作为 Linux 复现指南；当前发布候选的精确双架构大小/哈希和线上验证要求以 `CORE.md` 为准。所有 target、SDK 解压、下载和日志必须写入 `%VSCODE_ROOT%\99_Temp\librustdesk_core` 的明确子目录。
 > 使其包含新增的 `rustdesk_bridge_get_peer_option` 和 `rustdesk_bridge_get_peer_info` 导出符号。
 
 ---
@@ -378,10 +380,11 @@ Finished `release` profile [optimized] target(s) in 7m 59s
 Native bridge artifact copied to .../target/harmony/librustdesk_harmony_bridge.a
 ```
 
-**当前产物**：
-- Ubuntu验证时会生成 `$RUSTDESK_HARMONY_BUILD_DIR/native_rust_core/target/aarch64-unknown-linux-ohos/release/librustdesk_harmony_bridge.a`
-- 清理后当前保留 `$RUSTDESK_HARMONY_BUILD_DIR/native_rust_core/target/harmony/librustdesk_harmony_bridge.a`
-- 当前Windows最新产物大小：132,262,622 bytes，SHA256 `27D91DB4EBC2BF7F51A501103D34050534A39727C8EA710F5C9BAB1133A6FB21`
+**历史产物**：
+- Ubuntu验证时曾生成 `$RUSTDESK_HARMONY_BUILD_DIR/native_rust_core/target/aarch64-unknown-linux-ohos/release/librustdesk_harmony_bridge.a`
+- 早期清理后曾保留 `$RUSTDESK_HARMONY_BUILD_DIR/native_rust_core/target/harmony/librustdesk_harmony_bridge.a`
+- 这些旧 `native_rust_core/target` 产物已在 2026-06-21 16:26 清理中删除；当前标准双架构产物位于 `%VSCODE_ROOT%\99_Temp\librustdesk_core\cargo_target\...`，详见 `docs/WORKSPACE_PATHS.md`。
+- 历史 Windows 产物大小：132,262,622 bytes，SHA256 `27D91DB4EBC2BF7F51A501103D34050534A39727C8EA710F5C9BAB1133A6FB21`
 
 **符号验证**：
 - `rustdesk_bridge_get_peer_option` 存在
@@ -392,8 +395,8 @@ Native bridge artifact copied to .../target/harmony/librustdesk_harmony_bridge.a
 
 完成了，Rust OHOS 交叉编译已经成功。
 
-产物：$VSCODE_ROOT_LINUX/99_Temp/rustdesk_harmonyos_build/native_rust_core/target/harmony/librustdesk_harmony_bridge.a
-大小：Ubuntu验证时约128M；当前清理后仅保留 harmony 拷贝路径，Windows最新产物为132,262,622 bytes。
+历史产物：$VSCODE_ROOT_LINUX/99_Temp/rustdesk_harmonyos_build/native_rust_core/target/harmony/librustdesk_harmony_bridge.a
+大小：Ubuntu验证时约128M；该旧 harmony 拷贝路径已在 2026-06-21 清理中删除，当前 Windows 标准产物见 `%VSCODE_ROOT%\99_Temp\librustdesk_core\cargo_target\...`。
 修复：导出 harmony_bridge core API：$VSCODE_ROOT_LINUX/99_Temp/rustdesk-master/src/harmony_bridge/mod.rs:3
 补齐：peer info/option 与尾部 bridge stub：$VSCODE_ROOT_LINUX/99_Temp/rustdesk-master/src/harmony_bridge/core.rs:162
 修复：native bridge 不再访问被 cfg 掉的 ui_interface/hbb_common：native_rust_core/src/bridge_api.rs:324
@@ -401,7 +404,7 @@ Native bridge artifact copied to .../target/harmony/librustdesk_harmony_bridge.a
 验证：rustdesk_bridge_get_peer_option、rustdesk_bridge_get_peer_info、rustdesk_bridge_initialize_runtime 等符号已存在；llvm-nm 有 LLVM 版本 warning，但不影响本次产物生成。
 完成了，项目现在干净不少，文档也同步到当前状态。
 
-清理：项目根只剩 .codeartsdoer、.git 和 rustdesk_harmonyos；99_Temp 只保留 rustdesk-master 与 rustdesk_harmonyos_build，归档/备份/官方APK和可再生成缓存已删除。
+历史清理：当时项目根只剩 .codeartsdoer、.git 和 rustdesk_harmonyos；99_Temp 只保留 rustdesk-master 与 rustdesk_harmonyos_build。当前清理状态以 `docs/WORKSPACE_PATHS.md` 为准，`.codeartsdoer`、工作区根临时 clone、旧 target/HAP/clone/log 均已删除。
 同步：最新 Windows 产物 librustdesk_harmony_bridge.a 已复制为 entry/src/main/libs/arm64/librustdesk_core.a，SHA256 校验一致。
 文档：8个 docs/*.md 已更新 Ubuntu/Windows 编译、清理结果、132,262,622 bytes staticlib、Rust ABI/C++ NAPI 当前差异。
 关键状态：Rust C ABI 是46个函数，C++ NAPI 当前注册51个函数(含5个辅助函数)，abi.h声明46个extern函数，三层完全对齐。

@@ -138,12 +138,7 @@ pub extern "C" fn rustdesk_bridge_update_incoming_screen_frame(
     let format = read_c_string(format);
     let source = unsafe { std::slice::from_raw_parts(data, data_len) };
     if rustdesk_core::harmony_bridge::update_incoming_screen_frame(
-        width,
-        height,
-        stride,
-        timestamp,
-        &format,
-        source,
+        width, height, stride, timestamp, &format, source,
     ) {
         1
     } else {

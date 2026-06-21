@@ -8,7 +8,7 @@ use hbb_common::rendezvous_proto::ConnType;
 use serde_json::json;
 use std::collections::HashMap;
 use std::os::raw::c_int;
-use std::sync::atomic::AtomicUsize;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex, OnceLock, RwLock};
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -17,8 +17,13 @@ static LOCAL_OPTIONS: OnceLock<Mutex<HashMap<String, String>>> = OnceLock::new()
 static LATEST_VIDEO_FRAME: OnceLock<Mutex<Option<VideoFrameState>>> = OnceLock::new();
 static INCOMING_SCREEN_FRAME: OnceLock<Mutex<Option<IncomingScreenFrameState>>> = OnceLock::new();
 static ACTIVE_SESSION: OnceLock<Mutex<Option<Session<HarmonyHandler>>>> = OnceLock::new();
+static FILE_TRANSFER_SESSION: OnceLock<Mutex<Option<Session<HarmonyHandler>>>> = OnceLock::new();
+static ACTIVE_SESSION_PASSWORD: OnceLock<Mutex<String>> = OnceLock::new();
+static PENDING_REMOTE_DIRECTORY: OnceLock<Mutex<Option<(String, bool)>>> = OnceLock::new();
 static INCOMING_SERVICE_STARTED: OnceLock<Mutex<bool>> = OnceLock::new();
 static INCOMING_SERVICE_REQUESTED: OnceLock<Mutex<bool>> = OnceLock::new();
+static ACTIVE_SESSION_GENERATION: AtomicUsize = AtomicUsize::new(0);
+static FILE_TRANSFER_SESSION_GENERATION: AtomicUsize = AtomicUsize::new(0);
 
 #[derive(Clone, Debug)]
 struct VideoFrameState {
@@ -71,23 +76,31 @@ const HARMONY_SESSION_DEFAULT_OPTIONS: &[&str] = &[
     "codec-preference",
     "view-only",
     "show-remote-cursor",
-    "follow-remote-cursor",
-    "follow-remote-window",
     "show-quality-monitor",
     "disable-audio",
     "disable-clipboard",
     "lock-after-session-end",
-    "privacy-mode",
-    "true-color-444",
     "reverse-scroll",
     "swap-left-right-mouse",
-    "keep-terminal-on-disconnect",
+    "terminal-persistent",
+];
+
+const WIRE_TOGGLE_OPTIONS: &[&str] = &[
+    "view-only",
+    "show-remote-cursor",
+    "show-quality-monitor",
+    "disable-audio",
+    "disable-clipboard",
+    "lock-after-session-end",
+    "terminal-persistent",
 ];
 
 fn is_harmony_persistent_option(key: &str) -> bool {
     HARMONY_SESSION_DEFAULT_OPTIONS.contains(&key)
         || key == "display-scale-mode"
         || key == "custom-zoom-percent"
+        || key == "direct-server"
+        || key == "direct-access-port"
 }
 
 fn latest_video_frame() -> &'static Mutex<Option<VideoFrameState>> {
@@ -100,6 +113,18 @@ fn incoming_screen_frame() -> &'static Mutex<Option<IncomingScreenFrameState>> {
 
 fn active_session() -> &'static Mutex<Option<Session<HarmonyHandler>>> {
     ACTIVE_SESSION.get_or_init(|| Mutex::new(None))
+}
+
+fn file_transfer_session() -> &'static Mutex<Option<Session<HarmonyHandler>>> {
+    FILE_TRANSFER_SESSION.get_or_init(|| Mutex::new(None))
+}
+
+fn active_session_password() -> &'static Mutex<String> {
+    ACTIVE_SESSION_PASSWORD.get_or_init(|| Mutex::new(String::new()))
+}
+
+fn pending_remote_directory() -> &'static Mutex<Option<(String, bool)>> {
+    PENDING_REMOTE_DIRECTORY.get_or_init(|| Mutex::new(None))
 }
 
 fn incoming_service_started() -> &'static Mutex<bool> {
@@ -153,6 +178,10 @@ pub fn drain_connect_events_json() -> String {
     let mut guard = connect_state().lock().unwrap();
     let events: Vec<String> = guard.events.drain(..).collect();
     format!("[{}]", events.join(","))
+}
+
+fn clear_connect_events() {
+    connect_state().lock().unwrap().events.clear();
 }
 
 fn update_connect_state(stage: &str, peer_id: &str, summary: &str, detail: &str, error: &str) {
@@ -466,6 +495,9 @@ pub fn main_start_service(
     apply_server_options(server, relay_server, api_server, key);
 
     if enabled {
+        if config::Config::get_option("direct-server").trim().is_empty() {
+            config::Config::set_option("direct-server".to_owned(), "Y".to_owned());
+        }
         config::Config::set_option("stop-service".to_owned(), "".to_owned());
         *incoming_service_started().lock().unwrap() = false;
         *incoming_service_requested().lock().unwrap() = true;
@@ -497,6 +529,7 @@ pub fn main_start_service(
         })
         .to_string()
     } else {
+        config::Config::set_option("direct-server".to_owned(), "N".to_owned());
         config::Config::set_option("stop-service".to_owned(), "Y".to_owned());
         crate::common::set_server_running(false);
         crate::RendezvousMediator::restart();
@@ -759,8 +792,16 @@ pub fn session_start(
     api_server: &str,
     key: &str,
 ) {
+    close_file_transfer_session();
+    let generation = ACTIVE_SESSION_GENERATION.fetch_add(1, Ordering::SeqCst) + 1;
+    *active_session_password().lock().unwrap() = password.to_owned();
+    clear_connect_events();
     *latest_video_frame().lock().unwrap() = None;
     apply_server_options(server, relay_server, api_server, key);
+
+    // Harmony keeps remembered passwords in the application preference store. Clear
+    // the upstream peer cache so one-time credentials cannot leak into a new request.
+    main_forget_password(peer_id);
 
     update_connect_state(
         "connecting",
@@ -784,7 +825,10 @@ pub fn session_start(
         server_file_transfer_enabled: Arc::new(RwLock::new(true)),
         server_clipboard_enabled: Arc::new(RwLock::new(true)),
         reconnect_count: Arc::new(AtomicUsize::new(0)),
-        ui_handler: HarmonyHandler,
+        ui_handler: HarmonyHandler {
+            generation,
+            file_transfer: false,
+        },
         ..Default::default()
     };
     session.lc.write().unwrap().initialize(
@@ -798,7 +842,27 @@ pub fn session_start(
     );
     for option_key in HARMONY_SESSION_DEFAULT_OPTIONS {
         let option_value = get_local_option(option_key);
-        if !option_value.is_empty() {
+        if option_value.is_empty() {
+            continue;
+        }
+        if WIRE_TOGGLE_OPTIONS.contains(option_key) {
+            set_session_toggle(&session, option_key, option_is_enabled(&option_value));
+        } else if *option_key == "image-quality" {
+            let normalized = normalize_image_quality(&option_value);
+            if is_supported_image_quality(normalized) {
+                session.save_image_quality(normalized.to_owned());
+            }
+        } else if *option_key == "custom-image-quality" {
+            if let Ok(value) = option_value.parse::<i32>() {
+                session.save_custom_image_quality(value);
+            }
+        } else if *option_key == "custom-fps" {
+            if let Ok(value) = option_value.parse::<i32>() {
+                session.set_custom_fps(value);
+            }
+        } else if *option_key == "keyboard-mode" {
+            session.save_keyboard_mode(option_value);
+        } else {
             session.set_option((*option_key).to_owned(), option_value);
         }
     }
@@ -807,6 +871,68 @@ pub fn session_start(
     std::thread::spawn(move || {
         io_loop(session, round);
     });
+}
+
+fn close_file_transfer_session() {
+    FILE_TRANSFER_SESSION_GENERATION.fetch_add(1, Ordering::SeqCst);
+    if let Some(session) = file_transfer_session().lock().unwrap().as_ref() {
+        session.send(Data::Close);
+    }
+    *file_transfer_session().lock().unwrap() = None;
+    *pending_remote_directory().lock().unwrap() = None;
+}
+
+fn start_file_transfer_session(path: &str, include_hidden: bool) -> bool {
+    let peer_id = get_active_peer_id();
+    if peer_id.trim().is_empty() || active_session().lock().unwrap().is_none() {
+        queue_event(
+            "file-transfer-error",
+            "No active remote-control session",
+            &peer_id,
+        );
+        return false;
+    }
+
+    *pending_remote_directory().lock().unwrap() = Some((path.trim().to_owned(), include_hidden));
+    if let Some(session) = file_transfer_session().lock().unwrap().as_ref().cloned() {
+        session.read_remote_dir(path.trim().to_owned(), include_hidden);
+        return true;
+    }
+
+    let generation = FILE_TRANSFER_SESSION_GENERATION.fetch_add(1, Ordering::SeqCst) + 1;
+    let password = active_session_password().lock().unwrap().clone();
+    let session = Session::<HarmonyHandler> {
+        password,
+        server_keyboard_enabled: Arc::new(RwLock::new(false)),
+        server_file_transfer_enabled: Arc::new(RwLock::new(true)),
+        server_clipboard_enabled: Arc::new(RwLock::new(false)),
+        reconnect_count: Arc::new(AtomicUsize::new(0)),
+        ui_handler: HarmonyHandler {
+            generation,
+            file_transfer: true,
+        },
+        ..Default::default()
+    };
+    session.lc.write().unwrap().initialize(
+        peer_id.clone(),
+        ConnType::FILE_TRANSFER,
+        None,
+        false,
+        None,
+        None,
+        None,
+    );
+    let round = session.connection_round_state.lock().unwrap().new_round();
+    *file_transfer_session().lock().unwrap() = Some(session.clone());
+    queue_event(
+        "file-transfer-connecting",
+        &json!({"path":path.trim(),"includeHidden":include_hidden}).to_string(),
+        &peer_id,
+    );
+    std::thread::spawn(move || {
+        io_loop(session, round);
+    });
+    true
 }
 
 fn apply_server_options(server: &str, relay_server: &str, api_server: &str, key: &str) {
@@ -903,50 +1029,250 @@ fn peer_info_detail(peer_id: &str) -> String {
 }
 
 #[derive(Clone, Default)]
-struct HarmonyHandler;
+struct HarmonyHandler {
+    generation: usize,
+    file_transfer: bool,
+}
+
+impl HarmonyHandler {
+    fn is_current(&self) -> bool {
+        let current_generation = if self.file_transfer {
+            FILE_TRANSFER_SESSION_GENERATION.load(Ordering::SeqCst)
+        } else {
+            ACTIVE_SESSION_GENERATION.load(Ordering::SeqCst)
+        };
+        self.generation != 0 && self.generation == current_generation
+    }
+
+    fn queue_event(&self, kind: &str, detail: &str, peer_id: &str) {
+        if self.is_current() {
+            queue_event(kind, detail, peer_id);
+        }
+    }
+
+    fn session(&self) -> Option<Session<HarmonyHandler>> {
+        if self.file_transfer {
+            file_transfer_session().lock().unwrap().as_ref().cloned()
+        } else {
+            active_session().lock().unwrap().as_ref().cloned()
+        }
+    }
+}
 
 impl InvokeUiSession for HarmonyHandler {
-    fn set_cursor_data(&self, _cd: CursorData) {}
-    fn set_cursor_id(&self, _id: String) {}
-    fn set_cursor_position(&self, _cp: CursorPosition) {}
-    fn set_display(&self, _x: i32, _y: i32, _w: i32, _h: i32, _cursor_embedded: bool, _scale: f64) {
+    fn set_cursor_data(&self, cd: CursorData) {
+        if self.file_transfer {
+            return;
+        }
+        let mut colors = hbb_common::compress::decompress(&cd.colors);
+        if colors.len() >= 4 && colors.iter().all(|value| *value == 0) {
+            colors[3] = 1;
+        }
+        self.queue_event(
+            "cursor_data",
+            &json!({
+                "id": cd.id.to_string(),
+                "hotx": cd.hotx,
+                "hoty": cd.hoty,
+                "width": cd.width,
+                "height": cd.height,
+                "colors": colors,
+            })
+            .to_string(),
+            &get_active_peer_id(),
+        );
     }
-    fn switch_display(&self, _display: &SwitchDisplay) {}
+
+    fn set_cursor_id(&self, id: String) {
+        if self.file_transfer {
+            return;
+        }
+        self.queue_event("cursor_id", &format!("id={id}"), &get_active_peer_id());
+    }
+
+    fn set_cursor_position(&self, cp: CursorPosition) {
+        if self.file_transfer {
+            return;
+        }
+        self.queue_event(
+            "cursor_position",
+            &format!("x={};y={}", cp.x, cp.y),
+            &get_active_peer_id(),
+        );
+    }
+
+    fn set_display(&self, x: i32, y: i32, w: i32, h: i32, cursor_embedded: bool, scale: f64) {
+        if self.file_transfer {
+            return;
+        }
+        self.queue_event(
+            "display",
+            &format!(
+                "x={x};y={y};width={w};height={h};cursorEmbedded={cursor_embedded};scale={}",
+                if scale > 0.0 { scale } else { 1.0 }
+            ),
+            &get_active_peer_id(),
+        );
+    }
+
+    fn switch_display(&self, display: &SwitchDisplay) {
+        if self.file_transfer {
+            return;
+        }
+        let resolutions: Vec<serde_json::Value> = display
+            .resolutions
+            .resolutions
+            .iter()
+            .map(|resolution| {
+                json!({
+                    "width": resolution.width,
+                    "height": resolution.height,
+                })
+            })
+            .collect();
+        self.queue_event(
+            "switch-display",
+            &format!(
+                "display={};x={};y={};width={};height={};cursorEmbedded={};originalWidth={};originalHeight={};resolutions={}",
+                display.display,
+                display.x,
+                display.y,
+                display.width,
+                display.height,
+                display.cursor_embedded,
+                display.original_resolution.width,
+                display.original_resolution.height,
+                serde_json::to_string(&resolutions).unwrap_or_else(|_| "[]".to_owned()),
+            ),
+            &get_active_peer_id(),
+        );
+        self.set_display(
+            display.x,
+            display.y,
+            display.width,
+            display.height,
+            display.cursor_embedded,
+            1.0,
+        );
+    }
 
     fn set_peer_info(&self, peer_info: &PeerInfo) {
+        if !self.is_current() {
+            return;
+        }
         let peer_id = get_active_peer_id();
-        if let Some(session) = active_session().lock().unwrap().as_ref().cloned() {
+        if let Some(session) = self.session() {
             session.lc.write().unwrap().handle_peer_info(peer_info);
+        }
+        if self.file_transfer {
+            self.queue_event(
+                "file-transfer-peer-info",
+                &format!(
+                    "hostname={};username={};platform={};version={}",
+                    peer_info.hostname, peer_info.username, peer_info.platform, peer_info.version
+                ),
+                &peer_id,
+            );
+            return;
         }
         let detail = format!(
             "hostname={}; username={}; platform={}; version={}",
             peer_info.hostname, peer_info.username, peer_info.platform, peer_info.version
         );
-        queue_event("peer-info", &detail, &peer_id);
-        if get_session_stage() != "connected" {
-            update_connect_state("connected", &peer_id, "Connected", &detail, "");
-        }
+        self.queue_event("peer-info", &detail, &peer_id);
     }
 
-    fn set_displays(&self, _displays: &Vec<DisplayInfo>) {}
+    fn set_displays(&self, displays: &Vec<DisplayInfo>) {
+        if self.file_transfer {
+            return;
+        }
+        let payload: Vec<serde_json::Value> = displays
+            .iter()
+            .map(|display| {
+                let (original_width, original_height) = display
+                    .original_resolution
+                    .as_ref()
+                    .map(|resolution| (resolution.width, resolution.height))
+                    .unwrap_or((0, 0));
+                json!({
+                    "x": display.x,
+                    "y": display.y,
+                    "width": display.width,
+                    "height": display.height,
+                    "name": display.name,
+                    "online": display.online,
+                    "cursorEmbedded": display.cursor_embedded,
+                    "originalWidth": original_width,
+                    "originalHeight": original_height,
+                    "scale": display.scale,
+                })
+            })
+            .collect();
+        self.queue_event(
+            "displays",
+            &serde_json::to_string(&payload).unwrap_or_else(|_| "[]".to_owned()),
+            &get_active_peer_id(),
+        );
+    }
     fn set_platform_additions(&self, _data: &str) {}
 
     fn on_connected(&self, conn_type: ConnType) {
+        if !self.is_current() {
+            return;
+        }
         let peer_id = get_active_peer_id();
+        if self.file_transfer {
+            self.queue_event(
+                "file-transfer-connected",
+                &format!("connType={conn_type:?}"),
+                &peer_id,
+            );
+            return;
+        }
         let detail = format!("Connected; connType={conn_type:?}");
         update_connect_state("connected", &peer_id, "Connected", &detail, "");
-        queue_event("session-connected", &detail, &peer_id);
+        self.queue_event("session-connected", &detail, &peer_id);
         if let Some(session) = active_session().lock().unwrap().as_ref().cloned() {
             session.request_init_msgs(0);
             session.refresh_video(0);
         }
     }
 
-    fn update_privacy_mode(&self) {}
+    fn update_privacy_mode(&self) {
+        if self.file_transfer {
+            return;
+        }
+        let enabled = active_session()
+            .lock()
+            .unwrap()
+            .as_ref()
+            .map(|session| session.get_toggle_option("privacy-mode".to_owned()))
+            .unwrap_or(false);
+        self.queue_event(
+            "privacy-mode-state",
+            if enabled { "on=true" } else { "on=false" },
+            &get_active_peer_id(),
+        );
+    }
     fn set_permission(&self, _name: &str, _value: bool) {}
 
     fn close_success(&self) {
+        if !self.is_current() {
+            return;
+        }
         let peer_id = get_active_peer_id();
+        if self.file_transfer {
+            self.queue_event("file-transfer-ready", "ready=true", &peer_id);
+            if let Some((path, include_hidden)) = pending_remote_directory().lock().unwrap().take()
+            {
+                if !path.is_empty() {
+                    if let Some(session) = self.session() {
+                        session.read_remote_dir(path, include_hidden);
+                    }
+                }
+            }
+            return;
+        }
         update_connect_state(
             "connected",
             &peer_id,
@@ -954,7 +1280,7 @@ impl InvokeUiSession for HarmonyHandler {
             "Connection handshake completed",
             "",
         );
-        queue_event(
+        self.queue_event(
             "connection-ready",
             "Connection handshake completed",
             &peer_id,
@@ -962,6 +1288,9 @@ impl InvokeUiSession for HarmonyHandler {
     }
 
     fn update_quality_status(&self, qs: QualityStatus) {
+        if !self.is_current() || self.file_transfer {
+            return;
+        }
         let detail = json!({
             "speed": qs.speed,
             "fps": qs.fps,
@@ -971,12 +1300,23 @@ impl InvokeUiSession for HarmonyHandler {
             "chroma": qs.chroma,
         })
         .to_string();
-        queue_event("quality-status", &detail, &get_active_peer_id());
+        self.queue_event("quality-status", &detail, &get_active_peer_id());
     }
 
     fn set_connection_type(&self, is_secured: bool, direct: bool, stream_type: &str) {
+        if !self.is_current() {
+            return;
+        }
         let peer_id = get_active_peer_id();
-        queue_event(
+        if self.file_transfer {
+            self.queue_event(
+                "file-transfer-connection-type",
+                &format!("secured={is_secured};direct={direct};stream={stream_type}"),
+                &peer_id,
+            );
+            return;
+        }
+        self.queue_event(
             "connection-type",
             &format!("secured={is_secured}; direct={direct}; stream={stream_type}"),
             &peer_id,
@@ -984,25 +1324,25 @@ impl InvokeUiSession for HarmonyHandler {
     }
 
     fn set_fingerprint(&self, fingerprint: String) {
-        queue_event("fingerprint", &fingerprint, &get_active_peer_id());
+        self.queue_event("fingerprint", &fingerprint, &get_active_peer_id());
     }
 
     fn job_error(&self, id: i32, err: String, file_num: i32) {
-        queue_event(
+        self.queue_event(
             "job-error",
             &json!({"id":id,"error":err,"file_num":file_num}).to_string(),
             &get_active_peer_id(),
         );
     }
     fn job_done(&self, id: i32, file_num: i32) {
-        queue_event(
+        self.queue_event(
             "job-done",
             &json!({"id":id,"file_num":file_num}).to_string(),
             &get_active_peer_id(),
         );
     }
     fn job_progress(&self, id: i32, file_num: i32, speed: f64, finished_size: f64) {
-        queue_event(
+        self.queue_event(
             "job-progress",
             &json!({
                 "id":id,
@@ -1015,16 +1355,16 @@ impl InvokeUiSession for HarmonyHandler {
         );
     }
     fn clear_all_jobs(&self) {
-        queue_event("clear-all-jobs", "{}", &get_active_peer_id());
+        self.queue_event("clear-all-jobs", "{}", &get_active_peer_id());
     }
     fn new_message(&self, msg: String) {
-        queue_event("chat-message", &msg, &get_active_peer_id());
+        self.queue_event("chat-message", &msg, &get_active_peer_id());
     }
     fn update_transfer_list(&self) {
-        queue_event("update-transfer-list", "{}", &get_active_peer_id());
+        self.queue_event("update-transfer-list", "{}", &get_active_peer_id());
     }
     fn load_last_job(&self, cnt: i32, job_json: &str, auto_start: bool) {
-        queue_event(
+        self.queue_event(
             "load-last-job",
             &json!({"cnt":cnt,"job":job_json,"auto_start":auto_start}).to_string(),
             &get_active_peer_id(),
@@ -1052,11 +1392,11 @@ impl InvokeUiSession for HarmonyHandler {
         } else {
             crate::common::make_fd_to_json(id, path, entries)
         };
-        queue_event("folder-files", &detail, &get_active_peer_id());
-        queue_event("update-folder-files", &detail, &get_active_peer_id());
+        self.queue_event("folder-files", &detail, &get_active_peer_id());
+        self.queue_event("update-folder-files", &detail, &get_active_peer_id());
     }
     fn confirm_delete_files(&self, id: i32, i: i32, name: String) {
-        queue_event(
+        self.queue_event(
             "confirm-delete-files",
             &json!({"id":id,"index":i,"name":name}).to_string(),
             &get_active_peer_id(),
@@ -1070,7 +1410,7 @@ impl InvokeUiSession for HarmonyHandler {
         is_upload: bool,
         is_identical: bool,
     ) {
-        queue_event(
+        self.queue_event(
             "override-file-confirm",
             &json!({
                 "id":id,
@@ -1083,13 +1423,25 @@ impl InvokeUiSession for HarmonyHandler {
             &get_active_peer_id(),
         );
     }
-    fn update_block_input_state(&self, _on: bool) {}
+    fn update_block_input_state(&self, on: bool) {
+        if self.file_transfer {
+            return;
+        }
+        self.queue_event(
+            "block-input-state",
+            if on { "on=true" } else { "on=false" },
+            &get_active_peer_id(),
+        );
+    }
 
     fn adapt_size(&self) {}
 
     fn on_rgba(&self, display: usize, rgba: &mut scrap::ImageRgb) {
+        if !self.is_current() || self.file_transfer {
+            return;
+        }
         publish_real_video_frame(display as c_int, rgba);
-        queue_event(
+        self.queue_event(
             "video-frame",
             "Remote video frame received",
             &get_active_peer_id(),
@@ -1097,45 +1449,72 @@ impl InvokeUiSession for HarmonyHandler {
     }
 
     fn msgbox(&self, msgtype: &str, title: &str, text: &str, link: &str, retry: bool) {
+        if !self.is_current() {
+            return;
+        }
         let peer_id = get_active_peer_id();
+        if self.file_transfer {
+            self.queue_event(
+                "file-transfer-error",
+                &json!({
+                    "type": msgtype,
+                    "title": title,
+                    "text": text,
+                    "link": link,
+                    "retry": retry,
+                })
+                .to_string(),
+                &peer_id,
+            );
+            return;
+        }
         let detail =
             format!("type={msgtype}; title={title}; text={text}; link={link}; retry={retry}");
         if msgtype == "error" {
             update_connect_state("error", &peer_id, title, &detail, text);
-            queue_event("session-error", &detail, &peer_id);
+            self.queue_event("session-error", &detail, &peer_id);
             if retry {
-                queue_event("msgbox", &detail, &peer_id);
+                self.queue_event("msgbox", &detail, &peer_id);
             }
         } else {
-            queue_event("msgbox", &detail, &peer_id);
+            self.queue_event("msgbox", &detail, &peer_id);
         }
     }
 
     fn cancel_msgbox(&self, tag: &str) {
-        queue_event("cancel-msgbox", tag, &get_active_peer_id());
+        self.queue_event("cancel-msgbox", tag, &get_active_peer_id());
     }
     fn switch_back(&self, _id: &str) {}
     fn portable_service_running(&self, _running: bool) {}
     fn on_voice_call_started(&self) {
-        queue_event("voice-call-started", "", &get_active_peer_id());
+        self.queue_event("voice-call-started", "", &get_active_peer_id());
     }
     fn on_voice_call_closed(&self, reason: &str) {
-        queue_event("voice-call-closed", reason, &get_active_peer_id());
+        self.queue_event("voice-call-closed", reason, &get_active_peer_id());
     }
     fn on_voice_call_waiting(&self) {
-        queue_event("voice-call-waiting", "", &get_active_peer_id());
+        self.queue_event("voice-call-waiting", "", &get_active_peer_id());
     }
     fn on_voice_call_incoming(&self) {
-        queue_event("voice-call-incoming", "", &get_active_peer_id());
+        self.queue_event("voice-call-incoming", "", &get_active_peer_id());
     }
     fn get_rgba(&self, _display: usize) -> *const u8 {
         std::ptr::null()
     }
     fn next_rgba(&self, _display: usize) {}
     fn set_multiple_windows_session(&self, _sessions: Vec<WindowsSession>) {}
-    fn set_current_display(&self, _disp_idx: i32) {}
+    fn set_current_display(&self, disp_idx: i32) {
+        if self.file_transfer {
+            return;
+        }
+        self.queue_event(
+            "current-display",
+            &format!("display={disp_idx}"),
+            &get_active_peer_id(),
+        );
+    }
     fn update_record_status(&self, start: bool) {
-        queue_event(
+        self.queue_event(
             "record-status",
             if start { "start=true" } else { "start=false" },
             &get_active_peer_id(),
@@ -1143,7 +1522,7 @@ impl InvokeUiSession for HarmonyHandler {
     }
     fn printer_request(&self, _id: i32, _path: String) {}
     fn handle_screenshot_resp(&self, sid: String, msg: String) {
-        queue_event(
+        self.queue_event(
             "screenshot-response",
             &format!("sid={sid};msg={msg}"),
             &get_active_peer_id(),
@@ -1166,8 +1545,8 @@ impl InvokeUiSession for HarmonyHandler {
                     "replay_terminal_output": opened.replay_terminal_output,
                 })
                 .to_string();
-                queue_event("terminal-response", &detail, &peer_id);
-                queue_event(
+                self.queue_event("terminal-response", &detail, &peer_id);
+                self.queue_event(
                     if opened.success {
                         "terminal-opened"
                     } else {
@@ -1190,8 +1569,8 @@ impl InvokeUiSession for HarmonyHandler {
                     "compressed": false,
                 })
                 .to_string();
-                queue_event("terminal-response", &detail, &peer_id);
-                queue_event("terminal-output", &detail, &peer_id);
+                self.queue_event("terminal-response", &detail, &peer_id);
+                self.queue_event("terminal-output", &detail, &peer_id);
             }
             Some(Union::Closed(closed)) => {
                 let detail = json!({
@@ -1200,8 +1579,8 @@ impl InvokeUiSession for HarmonyHandler {
                     "exit_code": closed.exit_code,
                 })
                 .to_string();
-                queue_event("terminal-response", &detail, &peer_id);
-                queue_event("terminal-closed", &detail, &peer_id);
+                self.queue_event("terminal-response", &detail, &peer_id);
+                self.queue_event("terminal-closed", &detail, &peer_id);
             }
             Some(Union::Error(error)) => {
                 let detail = json!({
@@ -1210,12 +1589,12 @@ impl InvokeUiSession for HarmonyHandler {
                     "message": error.message,
                 })
                 .to_string();
-                queue_event("terminal-response", &detail, &peer_id);
-                queue_event("terminal-error", &detail, &peer_id);
+                self.queue_event("terminal-response", &detail, &peer_id);
+                self.queue_event("terminal-error", &detail, &peer_id);
             }
             None => {}
             Some(_) => {
-                queue_event("terminal-error", "{\"type\":\"unknown\"}", &peer_id);
+                self.queue_event("terminal-error", "{\"type\":\"unknown\"}", &peer_id);
             }
         }
     }
@@ -1231,8 +1610,7 @@ fn mark_peer_connected_with_cached_info(peer_id: &str) {
 /// Returns the boolean value of a session toggle option by key.
 pub fn session_get_toggle_option(key: &str) -> bool {
     if let Some(session) = active_session().lock().unwrap().as_ref().cloned() {
-        let value = session.get_option(key.to_owned());
-        return option_is_enabled(&value);
+        return session.get_toggle_option(key.to_owned());
     }
     option_is_enabled(&get_local_option(key))
 }
@@ -1281,8 +1659,13 @@ pub fn apply_session_option(key: &str, value: &str) -> bool {
     };
     let applied = match key {
         "image-quality" => {
-            session.save_image_quality(value.to_owned());
-            true
+            let normalized = normalize_image_quality(value);
+            if is_supported_image_quality(normalized) {
+                session.save_image_quality(normalized.to_owned());
+                true
+            } else {
+                false
+            }
         }
         "custom-image-quality" => match value.parse::<i32>() {
             Ok(v) => {
@@ -1298,10 +1681,60 @@ pub fn apply_session_option(key: &str, value: &str) -> bool {
             }
             Err(_) => false,
         },
+        "keyboard-mode" => {
+            if session.is_keyboard_mode_supported(value.to_owned()) {
+                session.save_keyboard_mode(value.to_owned());
+                true
+            } else {
+                false
+            }
+        }
         "codec-preference" => {
-            session.set_option(key.to_owned(), value.to_owned());
-            session.update_supported_decodings();
+            let (vp8, av1, h264, h265) = session.alternative_codecs();
+            let supported = match value {
+                "auto" | "vp9" => true,
+                "vp8" => vp8,
+                "av1" => av1,
+                "h264" => h264,
+                "h265" => h265,
+                _ => false,
+            };
+            if !supported {
+                false
+            } else {
+                set_local_option(key, value);
+                session.set_option(key.to_owned(), value.to_owned());
+                session.update_supported_decodings();
+                queue_event(
+                    "codec-preference",
+                    &format!(
+                        "requested={value};stored={};vp8={vp8};av1={av1};h264={h264};h265={h265}",
+                        session.get_option(key.to_owned())
+                    ),
+                    &get_active_peer_id(),
+                );
+                true
+            }
+        }
+        "block-input" => {
+            let command = if option_is_enabled(value) {
+                "block-input"
+            } else {
+                "unblock-input"
+            };
+            session.toggle_option(command.to_owned());
             true
+        }
+        "privacy-mode" => {
+            if session.is_privacy_mode_supported() {
+                let enabled = option_is_enabled(value);
+                if session.get_toggle_option(key.to_owned()) != enabled {
+                    session.toggle_privacy_mode(String::new(), enabled);
+                }
+                true
+            } else {
+                false
+            }
         }
         "record-session" => {
             session.record_screen(option_is_enabled(value));
@@ -1316,6 +1749,10 @@ pub fn apply_session_option(key: &str, value: &str) -> bool {
             true
         }
         "session-action" => false,
+        _ if WIRE_TOGGLE_OPTIONS.contains(&key) => {
+            set_session_toggle(&session, key, option_is_enabled(value));
+            true
+        }
         _ => {
             session.set_option(key.to_owned(), value.to_owned());
             true
@@ -1341,6 +1778,24 @@ pub fn apply_session_option(key: &str, value: &str) -> bool {
 fn option_is_enabled(value: &str) -> bool {
     let normalized = value.trim().to_ascii_lowercase();
     normalized == "y" || normalized == "yes" || normalized == "true" || normalized == "1"
+}
+
+fn set_session_toggle(session: &Session<HarmonyHandler>, key: &str, enabled: bool) {
+    if session.get_toggle_option(key.to_owned()) != enabled {
+        session.toggle_option(key.to_owned());
+    }
+}
+
+fn normalize_image_quality(value: &str) -> &str {
+    if value == "speed" {
+        "low"
+    } else {
+        value
+    }
+}
+
+fn is_supported_image_quality(value: &str) -> bool {
+    matches!(value, "best" | "balanced" | "low" | "custom")
 }
 
 /// Marks the session as connected for the given peer.
@@ -1386,6 +1841,9 @@ pub fn mark_session_error(message: &str) {
 
 /// Closes the current session.
 pub fn session_close() {
+    ACTIVE_SESSION_GENERATION.fetch_add(1, Ordering::SeqCst);
+    close_file_transfer_session();
+    active_session_password().lock().unwrap().clear();
     let peer_id = get_active_peer_id();
     if let Some(session) = active_session().lock().unwrap().as_ref() {
         session.send(Data::Close);
@@ -1412,6 +1870,7 @@ pub fn session_login(password: &str, _remember: bool) -> bool {
     let Some(session) = active_session().lock().unwrap().as_ref().cloned() else {
         return false;
     };
+    *active_session_password().lock().unwrap() = password.to_owned();
     session.send(Data::Login((
         String::new(),
         String::new(),
@@ -1569,18 +2028,12 @@ pub fn session_close_terminal(terminal_id: c_int) -> bool {
 /// Reads the remote directory at the given path.
 /// Returns true if the read was initiated successfully.
 pub fn session_read_remote_dir(path: &str, include_hidden: bool) -> bool {
-    let Some(session) = active_session().lock().unwrap().as_ref().cloned() else {
-        queue_event(
-            "file-transfer",
-            "failed=no-active-session; action=read-dir",
-            "",
-        );
+    let normalized = path.trim();
+    if file_transfer_session().lock().unwrap().is_none() {
+        return start_file_transfer_session(normalized, include_hidden);
+    }
+    let Some(session) = file_transfer_session().lock().unwrap().as_ref().cloned() else {
         return false;
-    };
-    let normalized = if path.trim().is_empty() {
-        "/"
-    } else {
-        path.trim()
     };
     session.read_remote_dir(normalized.to_owned(), include_hidden);
     queue_event(
@@ -1603,7 +2056,7 @@ pub fn session_create_dir(path: &str) -> bool {
         );
         return false;
     }
-    let Some(session) = active_session().lock().unwrap().as_ref().cloned() else {
+    let Some(session) = file_transfer_session().lock().unwrap().as_ref().cloned() else {
         queue_event(
             "file-transfer",
             "failed=no-active-session; action=create-dir",
@@ -1632,7 +2085,7 @@ pub fn delete_remote_path(path: &str, is_directory: bool) -> bool {
         );
         return false;
     }
-    let Some(session) = active_session().lock().unwrap().as_ref().cloned() else {
+    let Some(session) = file_transfer_session().lock().unwrap().as_ref().cloned() else {
         queue_event(
             "file-transfer",
             "failed=no-active-session; action=delete",
@@ -1667,7 +2120,7 @@ pub fn session_send_files(path: &str, to: &str, is_remote: bool) -> bool {
         );
         return false;
     }
-    let Some(session) = active_session().lock().unwrap().as_ref().cloned() else {
+    let Some(session) = file_transfer_session().lock().unwrap().as_ref().cloned() else {
         queue_event(
             "file-transfer",
             "failed=no-active-session; action=start",
@@ -1678,7 +2131,7 @@ pub fn session_send_files(path: &str, to: &str, is_remote: bool) -> bool {
     let job_id = next_bridge_job_id();
     session.send_files(
         job_id,
-        FileType::File as i32,
+        hbb_common::fs::JobType::Generic.into(),
         normalized_path.to_owned(),
         normalized_to.to_owned(),
         1,
@@ -2033,28 +2486,28 @@ pub fn session_new_rdp() {
 }
 
 pub fn session_remove_file(act_id: i32, path: &str, file_num: i32, is_remote: bool) {
-    let Some(session) = active_session().lock().unwrap().as_ref().cloned() else {
+    let Some(session) = file_transfer_session().lock().unwrap().as_ref().cloned() else {
         return;
     };
     session.remove_file(act_id, path.to_owned(), file_num, is_remote);
 }
 
 pub fn session_rename_file(act_id: i32, path: &str, new_name: &str, is_remote: bool) {
-    let Some(session) = active_session().lock().unwrap().as_ref().cloned() else {
+    let Some(session) = file_transfer_session().lock().unwrap().as_ref().cloned() else {
         return;
     };
     session.rename_file(act_id, path.to_owned(), new_name.to_owned(), is_remote);
 }
 
 pub fn session_cancel_job(act_id: i32) {
-    let Some(session) = active_session().lock().unwrap().as_ref().cloned() else {
+    let Some(session) = file_transfer_session().lock().unwrap().as_ref().cloned() else {
         return;
     };
     session.cancel_job(act_id);
 }
 
 pub fn session_resume_job(act_id: i32, is_remote: bool) {
-    let Some(session) = active_session().lock().unwrap().as_ref().cloned() else {
+    let Some(session) = file_transfer_session().lock().unwrap().as_ref().cloned() else {
         return;
     };
     session.resume_job(act_id, is_remote);
@@ -2067,7 +2520,7 @@ pub fn session_set_confirm_override_file(
     remember: bool,
     is_upload: bool,
 ) {
-    let Some(mut session) = active_session().lock().unwrap().as_ref().cloned() else {
+    let Some(mut session) = file_transfer_session().lock().unwrap().as_ref().cloned() else {
         return;
     };
     session.set_write_override(act_id, file_num, need_override, remember, is_upload);
@@ -2496,7 +2949,7 @@ pub fn main_http_request(_url: &str, _method: &str, _body: &str, _header: &str) 
 // ============================================================
 
 pub fn session_is_file_transfer() -> bool {
-    active_session()
+    file_transfer_session()
         .lock()
         .unwrap()
         .as_ref()
@@ -3159,8 +3612,8 @@ pub fn main_hide_dock() {
     // not applicable on OHOS
 }
 
-pub fn main_set_cursor_position(_x: i32, _y: i32) {
-    // TODO: implement cursor position
+pub fn main_set_cursor_position(x: i32, y: i32) {
+    let _ = crate::platform::set_cursor_pos(x, y);
 }
 
 pub fn main_clip_cursor() {

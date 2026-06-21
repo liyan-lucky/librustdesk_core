@@ -2,6 +2,8 @@
 
 RustDesk HarmonyOS native core static library builder. Builds `librustdesk_core.a` from RustDesk 1.4.7 upstream source with OHOS cross-compilation, and generates the complete C++ NAPI bridge layer for HarmonyOS ArkTS applications.
 
+> 2026-06-21 23:38 integration candidate: arm64 archive `131,091,732` bytes, SHA256 `E4614BAE4EDB54F2C0A2CFECE96A2E99D558B6900693B2B3A9B08B8F3DCD5D5D`; x86_64 archive `130,090,572` bytes, SHA256 `DB0283F44EA5E5D09A23D1756929B171F28FF2A602D595941902A18ECE5F17DD`. Both are local 2026-06-21 builds from the same source baseline, embedded in the final App HAP and verified by the package audit, 100-round audit and device cold start. Huawei controlled-side input injection is intentionally shelved as unsupported.
+
 [中文](README.md)
 
 ## Architecture
@@ -50,7 +52,6 @@ RustDesk Server / Peer
 | `ohos_stubs.cpp` | OHOS platform stubs (xcb, OH_TimeService, qsort_r) |
 | `CMakeLists.txt` | Links `librustdesk_core.a` into `librustdesk_bridge.so` |
 | `types/librustdesk_bridge/index.d.ts` | TypeScript type declarations for NAPI module |
-| `undefined_symbols.txt` | Undefined symbol list for link debugging |
 
 ### Code Generation Scripts (`scripts/`)
 
@@ -101,7 +102,8 @@ The Windows script prepares target static dependencies before Cargo runs. On a c
 
 ### Output
 
-- Static library: `native_rust_core/target/aarch64-unknown-linux-ohos/release/librustdesk_harmony_bridge.a`
+- Standard local static library: `%VSCODE_ROOT%\99_Temp\librustdesk_core\cargo_target\<target-triple>\release\librustdesk_harmony_bridge.a`
+- Repository-local `native_rust_core/target/` is regenerable cache and is no longer retained after the 2026-06-21 cleanup.
 - Rename to `librustdesk_core.a` when copying to HAP project
 
 ## Usage in HAP Project

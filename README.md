@@ -2,6 +2,8 @@
 
 RustDesk HarmonyOS 原生核心静态库构建器。从 RustDesk 1.4.7 上游源码通过 OHOS 交叉编译构建 `librustdesk_core.a`，并生成完整的 C++ NAPI 桥接层，供 HarmonyOS ArkTS 应用使用。
 
+> 2026-06-21 23:38 集成候选：arm64 静态库 `131,091,732` bytes，SHA256 `E4614BAE4EDB54F2C0A2CFECE96A2E99D558B6900693B2B3A9B08B8F3DCD5D5D`；x86_64 `130,090,572` bytes，SHA256 `DB0283F44EA5E5D09A23D1756929B171F28FF2A602D595941902A18ECE5F17DD`。两架构均为 2026-06-21 本地同源码构建，已装入 App 最终 HAP 并通过签名、ABI、100 轮功能审计和真机冷启动验证。华为被控端输入注入按用户决定搁置。
+
 [English](README_EN.md)
 
 ## 架构
@@ -50,7 +52,6 @@ RustDesk 服务器 / 对端
 | `ohos_stubs.cpp` | OHOS 平台桩（xcb, OH_TimeService, qsort_r） |
 | `CMakeLists.txt` | 将 `librustdesk_core.a` 链接进 `librustdesk_bridge.so` |
 | `types/librustdesk_bridge/index.d.ts` | TypeScript 类型声明 |
-| `undefined_symbols.txt` | 未定义符号列表，用于链接调试 |
 
 ### 代码生成脚本（`scripts/`）
 
@@ -101,7 +102,8 @@ Windows 脚本在 Cargo 运行前准备目标静态依赖。冷构建时会编�
 
 ### 产物
 
-- 静态库：`native_rust_core/target/aarch64-unknown-linux-ohos/release/librustdesk_harmony_bridge.a`
+- 本地标准静态库：`%VSCODE_ROOT%\99_Temp\librustdesk_core\cargo_target\<target-triple>\release\librustdesk_harmony_bridge.a`
+- 仓库内 `native_rust_core/target/` 属于可再生成缓存，2026-06-21 清理后不再保留。
 - 复制到 HAP 项目时重命名为 `librustdesk_core.a`
 
 ## 在 HAP 项目中使用

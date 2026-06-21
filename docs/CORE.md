@@ -2,6 +2,29 @@
 
 > 本文档记录 HarmonyOS 版 RustDesk 的核心结构、当前可用核心状态、重新编译路径和验证清单。目标是：即使清理了旧备份和生成产物，也能按本文重新编译出当前可用核心。
 
+## 2026-06-21 23:48 最终集成基线
+
+arm64：`131091732` bytes，SHA256 `E4614BAE4EDB54F2C0A2CFECE96A2E99D558B6900693B2B3A9B08B8F3DCD5D5D`，FNV `9cbd45a1`，编译时间 `2026-06-21 14:58`。x86_64：`130090572` bytes，SHA256 `DB0283F44EA5E5D09A23D1756929B171F28FF2A602D595941902A18ECE5F17DD`，FNV `38bf9990`，编译时间 `2026-06-21 14:48`。两者为当日本地同源码基线并已进入 App HAP `1D5C7395753D4E8F143FA051E0E931CCFB6C48FFEDA03A8DF91282DD007EC8D2`，双架构元数据已写入 CoreBuildInfo，签名、双 ABI、两架构依赖、固定哈希 100 轮审计和真机冷启动通过。线上 Release 必须下载后逐架构核对大小、SHA256 和导出符号，不能根据标签或版本号推定。
+
+> 2026-06-21 路径规则：Core 构建输出、Cargo target、依赖缓存、日志和备份统一写入 `%VSCODE_ROOT%\99_Temp`，详见 `docs/WORKSPACE_PATHS.md`。不要再把 `.codex_core_*`、临时 target 或构建日志留在 App/Core 仓库根，也不要使用 `F:\99_Temp`。
+
+## 2026-06-21 最新暂停状态
+
+- 2026-06-21 17:06 用户确认华为手机不支持被控端远程操控/输入注入，本轮搁置。App 侧已移除 accessibility extension、`ohos.permission.INPUT_MONITORING`、ArkTS accessibility service 与 `ohinput` 链接；Core 相关输入注入符号仅由 App `ohos_stubs.cpp` 固定返回 `201` 作链接兼容和诊断边界，不再作为发布阻塞项；其他功能仍继续收口。
+- 用户已要求暂停功能推进，先做文档同步和项目清理。
+- 最新本地双架构 Core 已构建并打入 App HAP：arm64 `131,091,732` bytes / SHA256 `E4614BAE4EDB54F2C0A2CFECE96A2E99D558B6900693B2B3A9B08B8F3DCD5D5D`；x86_64 `130,090,572` bytes / SHA256 `DB0283F44EA5E5D09A23D1756929B171F28FF2A602D595941902A18ECE5F17DD`。
+- `server_ohos.rs` 已修复 Wrong Password 后关闭原 socket 的问题，Windows 端可继续输入密码并进入会话。
+- App 真机被控共享已验证到 Windows 端真实画面持续刷新；华为手机被控端输入/操控因系统不支持已搁置。
+- 清理后标准产物路径：arm64/x86_64 Core archive 已迁移到 `%VSCODE_ROOT%\99_Temp\librustdesk_core\cargo_target\...`；App/Core 清理后备份分别位于 `rustdesk_harmonyos_backups` 与 `rustdesk_core_backups`，详见 `docs/WORKSPACE_PATHS.md`。
+- 2026-06-21 16:26 二次清理后，Core 仓库内 `rustdesk-master/target/`、`native_rust_core/target/`、`.codeartsdoer/` 和根目录构建日志已删除。当前 ignored 保留项只应是 `entry/` 静态库副本、`rdev-fork/` OHOS 输入 fork 源码、`rustdesk-master/src/version.rs` 生成版本文件。
+
+## 2026-06-20 跨对话接棒
+
+- 完整当前任务见 App 仓库 `F:\Visual_Studio_Code\11_Rustdesk_harmonyos\docs\AGENT_HANDOFF.md`。
+- 当前五编码源码已通过 x86_64 release 构建，arm64 尚未按最新源码重编。
+- 全部会话菜单仍需真实行为验证。已知“显示远程光标”未完成：`HarmonySessionHandler::set_cursor_data`、`set_cursor_id`、`set_cursor_position`、`set_display` 和 `main_set_cursor_position` 仍为空实现，必须先沿官方 Interface 回调补齐 bridge event。
+- 三点菜单也未完成：`get_toggle_option()` 没有 `block-input` 权威状态分支，用户取消阻止后出现 retryable disconnect；文件传输仅有请求/事件骨架，尚未通过真实双向传输验证。
+
 ## 当前结论
 
 - 当前采用 `staticlib + CMake 直接链接` 方案。
@@ -56,7 +79,7 @@ RustDesk Server / Peer
 - RustDesk upstream source: `%VSCODE_ROOT%\13_librustdesk_core\rustdesk-master`
 - Historical native build workspace: `%VSCODE_ROOT%\99_Temp\rustdesk_harmonyos_build`
 - Core staticlib in app: `%VSCODE_ROOT%\11_Rustdesk_harmonyos\entry\src\main\libs\arm64\librustdesk_core.a`
-- HAP staged project copy: `%VSCODE_ROOT%\99_Temp\harmonyos_stage\11_Rustdesk_harmonyos`
+- HAP staged project copy: `%VSCODE_ROOT%\99_Temp\harmonyos_stage\11_Rustdesk_harmonyos`（可再生成；2026-06-21 16:26 清理后当前不存在，构建脚本需要时重建）
 - Signed HAP output: `%VSCODE_ROOT%\99_Temp\harmonyos_build\11_Rustdesk_harmonyos\entry\build\default\outputs\default\entry-default-signed.hap`
 
 ## 关键文件
@@ -139,8 +162,8 @@ HAP:
 - Latest online release: `https://github.com/liyan-lucky/rustdesk_harmonyos/releases/tag/harmonyos-20260612-065038`
 - Current release rule: HAP-only; do not generate APP, `.app.zip`, `manifest.json`, or `SHA256SUMS.txt`
 - USB target used for validation: configured by `RUSTDESK_HARMONY_USB_TARGET`; hardware IDs are not recorded in docs.
-- Wireless target used for validation: `192.168.11.100:36169`
-- Latest local validation: 2026-06-14 core-74 downloaded into the app project, full HAP build passed, signed HAP `18,828,000` bytes with SHA256 `4BF796ED37DD1FCADF455F1585A55E36CFFC58940235D82FCAC55C6CBA6042A1`, `verify_native_harmonyos_hap.ps1 -SkipLaunch -SkipLogs` passed, and WiFi install succeeded on `192.168.11.100:36169`; `bm dump` showed `versionName=0.19.0`, `versionCode=1000090`, native library path `entry/libs/arm64`. Launch was blocked by the device lock screen (`Error Code:10106102`), so runtime `coreReady` verification for core-74 is pending unlock. Latest successful launch/runtime evidence remains the core-71 run from the same date.
+- Wireless target used for validation: `192.168.11.102:36169`
+- Latest local validation: 2026-06-14 core-74 downloaded into the app project, full HAP build passed, signed HAP `18,828,000` bytes with SHA256 `4BF796ED37DD1FCADF455F1585A55E36CFFC58940235D82FCAC55C6CBA6042A1`, `verify_native_harmonyos_hap.ps1 -SkipLaunch -SkipLogs` passed, and WiFi install succeeded on `192.168.11.102:36169`; `bm dump` showed `versionName=0.19.0`, `versionCode=1000090`, native library path `entry/libs/arm64`. Launch was blocked by the device lock screen (`Error Code:10106102`), so runtime `coreReady` verification for core-74 is pending unlock. Latest successful launch/runtime evidence remains the core-71 run from the same date.
 - 2026-06-09 wireless validation: HAP install and launch succeeded. hilog confirmed `coreReady=true`, `adapter=official-native`, Bridge 在线查询正常，远控连接建立。
 - **1.4.7 升级已完成**: 上游源码已升级到 1.4.7，native core 在线构建发布成功，HAP/APP 在线构建发布通过。
 - **2026-06-07 修复**: (1) 无密码连接时密码输入框丢失——`RemoteControl.ets` applyBridgeState error/idle 分支优先检查 `shouldPromptForPassword`；(2) 无密码连接被访问端刚提示就结束会话——`handleTerminalBridgeEvent` 将密码检查扩展到 `session-closed`；(3) LAN 发现失效——`rendezvous_mediator_ohos.rs` start_all() 中启动 `crate::lan::start_listening()` 监听线程。
@@ -254,7 +277,7 @@ cd /d %VSCODE_ROOT%\11_Rustdesk_harmonyos
 scripts\AUTO_BUILD_INSTALL.bat auto
 ```
 
-`AUTO_BUILD_INSTALL.bat` 会优先使用 `RUSTDESK_HARMONY_USB_TARGET` 指定的 USB 目标；USB 不在线时，会尝试 `hdc tconn 192.168.11.100:36169` 并使用无线目标。可通过 `RUSTDESK_HARMONY_USB_TARGET` 和 `RUSTDESK_HARMONY_WIRELESS_TARGET` 覆盖默认值。
+`AUTO_BUILD_INSTALL.bat` 会优先使用 `RUSTDESK_HARMONY_USB_TARGET` 指定的 USB 目标；USB 不在线时，会尝试 `hdc tconn 192.168.11.102:36169` 并使用无线目标。可通过 `RUSTDESK_HARMONY_USB_TARGET` 和 `RUSTDESK_HARMONY_WIRELESS_TARGET` 覆盖默认值。
 
 如果安装成功但启动返回 `Error Code:10106102`，表示设备锁屏且 HDC 无法自动解锁；脚本会将其视为“安装成功、启动需手动解锁后复测”的 warning。
 
@@ -298,12 +321,12 @@ AppMod finish
 start ability successfully.
 ```
 
-历史无线目标 `192.168.11.100:36169` 仅作为备用。命令行 `hdc list targets` 返回空并不一定表示设备不可用，可能只是无线目标尚未 attach 到本地 HDC server。无线验证前先执行：
+历史无线目标 `192.168.11.102:36169` 仅作为备用。命令行 `hdc list targets` 返回空并不一定表示设备不可用，可能只是无线目标尚未 attach 到本地 HDC server。无线验证前先执行：
 
 ```powershell
 hdc start
-hdc tconn 192.168.11.100:36169
-hdc -t 192.168.11.100:36169 list targets
+hdc tconn 192.168.11.102:36169
+hdc -t 192.168.11.102:36169 list targets
 ```
 
 多目标环境必须始终显式加 `-t <target>`。安装当前设备时不要加 `-g`。
@@ -1304,3 +1327,24 @@ HarmonyOS 版使用 **staticlib + CMake + NAPI** 架构：
 
 - 新 Session 的默认选项必须在 peer 初始化后写入 PeerConfig；只写 App 进程内缓存无法跨重启，也不会自然进入下一次连接。
 - 编码偏好使用官方键 `codec-preference`。当前会话切换时再调用 `update_supported_decodings()`；不要在握手前无条件发送解码能力更新。
+
+## 2026-06-20 Harmony 会话世代隔离与并行构建日志
+
+### 根因
+
+- `ACTIVE_SESSION` 被新会话替换后，旧 Rust I/O 线程仍可能稍后调用 `msgbox/on_connected/close_success/on_rgba`，从而把 `Reset by the peer` 或旧帧写入新会话的全局状态。
+- App 未明确记住密码时，上游 `PeerConfig.password` 仍可能残留，导致第二次连接跳过 `input-password`。
+- arm64 与 x86_64 同时启动脚本时，旧日志名只精确到秒，两个进程可能打开同一文件并在 Cargo 前失败。
+
+### 修复
+
+- 新增 `ACTIVE_SESSION_GENERATION: AtomicUsize`；`session_start()` 和 `session_close()` 都推进世代，`HarmonyHandler` 保存创建时 generation，关键回调只允许当前世代更新状态、事件或帧。
+- `session_start()` 在初始化 `LoginConfigHandler` 前调用 `main_forget_password(peer_id)`；是否记住密码由 App PreferenceStore 和本次显式 password 参数决定。
+- `set_peer_info()` 只保存 peer 元数据，不再将连接状态升级为 connected；鉴权完成只由 `on_connected()` 发布。
+- 构建日志名加入 target triple 和毫秒，允许两个目标并行构建。
+
+### 本地验证
+
+- arm64: `130,756,888` bytes，SHA256 `1C7B47D058525C21E5EF53F61CD68CD99C9CD1C07FEA04F00FCE815979EAC4D6`。
+- x86_64: `129,523,566` bytes，SHA256 `67C4E0E726E236073826D85FA704E42889AF8BAC665BC58C6A88ED7333797B04`。
+- 两个构建进程并行退出 `0`；日志分别为 `build_debug_aarch64_unknown_linux_ohos_20260620_112116_236.log` 和 `build_debug_x86_64_unknown_linux_ohos_20260620_112116_236.log`。

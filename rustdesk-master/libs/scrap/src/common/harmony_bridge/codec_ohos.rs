@@ -1,8 +1,9 @@
-use std::sync::{Arc, Mutex};
+use std::{ffi::c_void, sync::{Arc, Mutex}};
 
 use hbb_common::{
     anyhow::{anyhow, Context},
     bytes::Bytes,
+    config::{Config, PeerConfig},
     log,
     message_proto::{
         supported_decoding::PreferCodec, video_frame, Chroma, EncodedVideoFrame,
@@ -53,6 +54,239 @@ pub struct Decoder {
     valid: bool,
     vp8: Option<VpxDecoder>,
     vp9: Option<VpxDecoder>,
+    native: Option<OhosVideoDecoder>,
+}
+
+const OHOS_CODEC_AV1: i32 = 3;
+const OHOS_CODEC_H264: i32 = 4;
+const OHOS_CODEC_H265: i32 = 5;
+const OHOS_PIXEL_FORMAT_I420: i32 = 1;
+const OHOS_PIXEL_FORMAT_NV12: i32 = 2;
+
+unsafe extern "C" {
+    fn rustdesk_ohos_video_decoder_is_supported(codec: i32) -> bool;
+    fn rustdesk_ohos_video_decoder_create(codec: i32) -> *mut c_void;
+    fn rustdesk_ohos_video_decoder_destroy(handle: *mut c_void);
+    fn rustdesk_ohos_video_decoder_submit(
+        handle: *mut c_void,
+        data: *const u8,
+        size: usize,
+        key: bool,
+        presentation_time_us: i64,
+    ) -> i32;
+    fn rustdesk_ohos_video_decoder_frame_info(
+        handle: *mut c_void,
+        width: *mut i32,
+        height: *mut i32,
+        stride: *mut i32,
+        slice_height: *mut i32,
+        pixel_format: *mut i32,
+    ) -> i64;
+    fn rustdesk_ohos_video_decoder_copy_frame(
+        handle: *mut c_void,
+        output: *mut u8,
+        capacity: usize,
+    ) -> i64;
+}
+
+struct OhosVideoDecoder {
+    handle: *mut c_void,
+    frame: Vec<u8>,
+}
+
+unsafe impl Send for OhosVideoDecoder {}
+
+impl OhosVideoDecoder {
+    fn codec_id(format: CodecFormat) -> Option<i32> {
+        match format {
+            CodecFormat::AV1 => Some(OHOS_CODEC_AV1),
+            CodecFormat::H264 => Some(OHOS_CODEC_H264),
+            CodecFormat::H265 => Some(OHOS_CODEC_H265),
+            _ => None,
+        }
+    }
+
+    fn is_supported(format: CodecFormat) -> bool {
+        Self::codec_id(format)
+            .map(|codec| unsafe { rustdesk_ohos_video_decoder_is_supported(codec) })
+            .unwrap_or(false)
+    }
+
+    fn new(format: CodecFormat) -> Option<Self> {
+        let codec = Self::codec_id(format)?;
+        let handle = unsafe { rustdesk_ohos_video_decoder_create(codec) };
+        if handle.is_null() {
+            None
+        } else {
+            Some(Self {
+                handle,
+                frame: Vec::new(),
+            })
+        }
+    }
+
+    fn decode(&mut self, frames: &EncodedVideoFrames, rgb: &mut ImageRgb) -> ResultType<bool> {
+        let mut produced = false;
+        for frame in &frames.frames {
+            let status = unsafe {
+                rustdesk_ohos_video_decoder_submit(
+                    self.handle,
+                    frame.data.as_ptr(),
+                    frame.data.len(),
+                    frame.key,
+                    frame.pts,
+                )
+            };
+            if status < 0 {
+                return Err(anyhow!("OHOS native video decoder submit failed: {status}"));
+            }
+            if status == 0 {
+                continue;
+            }
+
+            let mut width = 0;
+            let mut height = 0;
+            let mut stride = 0;
+            let mut slice_height = 0;
+            let mut pixel_format = 0;
+            let frame_size = unsafe {
+                rustdesk_ohos_video_decoder_frame_info(
+                    self.handle,
+                    &mut width,
+                    &mut height,
+                    &mut stride,
+                    &mut slice_height,
+                    &mut pixel_format,
+                )
+            };
+            if frame_size <= 0 || width <= 0 || height <= 0 || stride <= 0 {
+                continue;
+            }
+            self.frame.resize(frame_size as usize, 0);
+            let copied = unsafe {
+                rustdesk_ohos_video_decoder_copy_frame(
+                    self.handle,
+                    self.frame.as_mut_ptr(),
+                    self.frame.len(),
+                )
+            };
+            if copied != frame_size {
+                return Err(anyhow!(
+                    "OHOS native video decoder copy failed: expected={frame_size}, copied={copied}"
+                ));
+            }
+            Self::convert_frame(
+                &self.frame,
+                width as usize,
+                height as usize,
+                stride as usize,
+                std::cmp::max(height, slice_height) as usize,
+                pixel_format,
+                rgb,
+            )?;
+            produced = true;
+        }
+        Ok(produced)
+    }
+
+    fn convert_frame(
+        frame: &[u8],
+        width: usize,
+        height: usize,
+        stride: usize,
+        slice_height: usize,
+        pixel_format: i32,
+        rgb: &mut ImageRgb,
+    ) -> ResultType<()> {
+        let bytes_per_row = (width * 4 + rgb.align() - 1) & !(rgb.align() - 1);
+        rgb.w = width;
+        rgb.h = height;
+        rgb.raw.resize(height * bytes_per_row, 0);
+        let y_size = stride * slice_height;
+        if frame.len() < y_size {
+            return Err(anyhow!("OHOS decoder frame is shorter than the Y plane"));
+        }
+        unsafe {
+            match pixel_format {
+                OHOS_PIXEL_FORMAT_I420 => {
+                    let uv_stride = (stride + 1) / 2;
+                    let uv_height = (slice_height + 1) / 2;
+                    let uv_size = uv_stride * uv_height;
+                    if frame.len() < y_size + uv_size * 2 {
+                        return Err(anyhow!("OHOS I420 decoder frame is incomplete"));
+                    }
+                    let y = frame.as_ptr();
+                    let u = frame[y_size..].as_ptr();
+                    let v = frame[y_size + uv_size..].as_ptr();
+                    match rgb.fmt() {
+                        crate::ImageFormat::ARGB => super::I420ToARGB(
+                            y,
+                            stride as i32,
+                            u,
+                            uv_stride as i32,
+                            v,
+                            uv_stride as i32,
+                            rgb.raw.as_mut_ptr(),
+                            bytes_per_row as i32,
+                            width as i32,
+                            height as i32,
+                        ),
+                        crate::ImageFormat::ABGR => super::I420ToABGR(
+                            y,
+                            stride as i32,
+                            u,
+                            uv_stride as i32,
+                            v,
+                            uv_stride as i32,
+                            rgb.raw.as_mut_ptr(),
+                            bytes_per_row as i32,
+                            width as i32,
+                            height as i32,
+                        ),
+                        _ => return Err(anyhow!("unsupported OHOS decoder RGB format")),
+                    };
+                }
+                OHOS_PIXEL_FORMAT_NV12 => {
+                    if frame.len() < y_size + stride * ((slice_height + 1) / 2) {
+                        return Err(anyhow!("OHOS NV12 decoder frame is incomplete"));
+                    }
+                    let y = frame.as_ptr();
+                    let uv = frame[y_size..].as_ptr();
+                    match rgb.fmt() {
+                        crate::ImageFormat::ARGB => super::NV12ToARGB(
+                            y,
+                            stride as i32,
+                            uv,
+                            stride as i32,
+                            rgb.raw.as_mut_ptr(),
+                            bytes_per_row as i32,
+                            width as i32,
+                            height as i32,
+                        ),
+                        crate::ImageFormat::ABGR => super::NV12ToABGR(
+                            y,
+                            stride as i32,
+                            uv,
+                            stride as i32,
+                            rgb.raw.as_mut_ptr(),
+                            bytes_per_row as i32,
+                            width as i32,
+                            height as i32,
+                        ),
+                        _ => return Err(anyhow!("unsupported OHOS decoder RGB format")),
+                    };
+                }
+                _ => return Err(anyhow!("unsupported OHOS decoder pixel format: {pixel_format}")),
+            }
+        }
+        Ok(())
+    }
+}
+
+impl Drop for OhosVideoDecoder {
+    fn drop(&mut self) {
+        unsafe { rustdesk_ohos_video_decoder_destroy(self.handle) };
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -206,18 +440,38 @@ impl Encoder {
 
 impl Decoder {
     pub fn supported_decodings(
-        _id: Option<&str>,
+        id: Option<&str>,
         _use_texture_render: bool,
         _luid: Option<i64>,
         mark_unsupported: &[CodecFormat],
     ) -> SupportedDecoding {
+        let configured_codec = id
+            .filter(|peer_id| !peer_id.is_empty())
+            .and_then(|peer_id| {
+                PeerConfig::load(peer_id)
+                    .options
+                    .get("codec-preference")
+                    .cloned()
+            })
+            .filter(|codec| !codec.is_empty())
+            .unwrap_or_else(|| Config::get_option("codec-preference"));
+        let preference = Some(configured_codec)
+            .map(|codec| match codec.as_str() {
+                "vp8" => PreferCodec::VP8,
+                "vp9" => PreferCodec::VP9,
+                "av1" => PreferCodec::AV1,
+                "h264" => PreferCodec::H264,
+                "h265" => PreferCodec::H265,
+                _ => PreferCodec::Auto,
+            })
+            .unwrap_or(PreferCodec::Auto);
         let mut decoding = SupportedDecoding {
             ability_vp8: 1,
             ability_vp9: 1,
-            ability_av1: 0,
-            ability_h264: 0,
-            ability_h265: 0,
-            prefer: PreferCodec::VP9.into(),
+            ability_av1: i32::from(OhosVideoDecoder::is_supported(CodecFormat::AV1)),
+            ability_h264: i32::from(OhosVideoDecoder::is_supported(CodecFormat::H264)),
+            ability_h265: i32::from(OhosVideoDecoder::is_supported(CodecFormat::H265)),
+            prefer: preference.into(),
             ..Default::default()
         };
         for unsupported in mark_unsupported {
@@ -254,13 +508,22 @@ impl Decoder {
         let valid = match format {
             CodecFormat::VP8 => vp8.is_some(),
             CodecFormat::VP9 => vp9.is_some(),
+            CodecFormat::AV1 | CodecFormat::H264 | CodecFormat::H265 => {
+                OhosVideoDecoder::is_supported(format)
+            }
             _ => false,
+        };
+        let native = if matches!(format, CodecFormat::AV1 | CodecFormat::H264 | CodecFormat::H265) {
+            OhosVideoDecoder::new(format)
+        } else {
+            None
         };
         Decoder {
             format,
-            valid,
+            valid: valid && (!matches!(format, CodecFormat::AV1 | CodecFormat::H264 | CodecFormat::H265) || native.is_some()),
             vp8,
             vp9,
+            native,
         }
     }
 
@@ -295,6 +558,16 @@ impl Decoder {
                     Err(anyhow!("vp9 decoder not available on ohos"))
                 }
             }
+            video_frame::Union::Av1s(frames)
+            | video_frame::Union::H264s(frames)
+            | video_frame::Union::H265s(frames) => {
+                *chroma = Some(Chroma::I420);
+                if let Some(native) = &mut self.native {
+                    native.decode(frames, rgb)
+                } else {
+                    Err(anyhow!("native video decoder not available on ohos"))
+                }
+            }
             _ => Err(anyhow!("unsupported video frame type on ohos")),
         }
     }
@@ -319,6 +592,18 @@ impl Decoder {
                     Self::handle_vpxs_video_frame(vp9, &frames, rgb, &mut chroma)
                 } else {
                     Err(anyhow!("vp9 decoder not available on ohos"))
+                }
+            }
+            CodecFormat::AV1 | CodecFormat::H264 | CodecFormat::H265 => {
+                let mut frames = EncodedVideoFrames::new();
+                frames.frames.push(EncodedVideoFrame {
+                    data: hbb_common::bytes::Bytes::from(data.to_vec()),
+                    ..Default::default()
+                });
+                if let Some(native) = &mut self.native {
+                    native.decode(&frames, rgb)
+                } else {
+                    Err(anyhow!("native video decoder not available on ohos"))
                 }
             }
             _ => Err(anyhow!("unsupported decoder format on ohos")),

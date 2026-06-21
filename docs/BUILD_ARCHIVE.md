@@ -2,6 +2,10 @@
 
 > 本文合并原 `SCRIPT_MAINTENANCE.md`、`SESSION3_SUMMARY.md`、`SESSION4_REAL_CONNECTION_PROBE.md`、`UBUNTU_CROSS_COMPILE_GUIDE.md` 的有效内容。这里保存历史路径和经验，当前权威构建命令、产物大小、SHA256、安装命令以 `CORE.md` 为准。
 
+> 2026-06-21 23:38 当前基线：arm64 SHA256 `E4614BAE4EDB54F2C0A2CFECE96A2E99D558B6900693B2B3A9B08B8F3DCD5D5D`，x86_64 SHA256 `DB0283F44EA5E5D09A23D1756929B171F28FF2A602D595941902A18ECE5F17DD`。两者均为 2026-06-21 本地同源码构建；旧路径和旧哈希仅作历史归档，发布和复验以 `CORE.md`、`WORKSPACE_PATHS.md` 与 App `AGENT_HANDOFF.md` 最新摘要为准。
+
+> 2026-06-21 路径补充：历史段落中的散落路径只作归档。当前权威路径以 `docs/WORKSPACE_PATHS.md` 为准，所有构建/测试/备份统一到 `%VSCODE_ROOT%\99_Temp`。
+
 ## 当前日常脚本
 
 - 增量构建 HAP：`scripts/build_hap.bat`
@@ -19,7 +23,7 @@
 
 `build_full_hap.bat` 是全量 HAP 构建入口，会先运行 `clean_project.ps1` 清理生成产物，再调用标准 Hvigor wrapper，因此 App 内构建时间会同步刷新。
 
-`AUTO_BUILD_INSTALL.bat` 支持 `auto` 目标：优先使用 `RUSTDESK_HARMONY_USB_TARGET` 指定的 USB 目标，USB 不在线时自动尝试无线 `192.168.11.100:36169`。默认目标可用 `RUSTDESK_HARMONY_USB_TARGET` 和 `RUSTDESK_HARMONY_WIRELESS_TARGET` 覆盖。
+`AUTO_BUILD_INSTALL.bat` 支持 `auto` 目标：优先使用 `RUSTDESK_HARMONY_USB_TARGET` 指定的 USB 目标，USB 不在线时自动尝试无线 `192.168.11.102:36169`。默认目标可用 `RUSTDESK_HARMONY_USB_TARGET` 和 `RUSTDESK_HARMONY_WIRELESS_TARGET` 覆盖。
 
 已清理的重复脚本：
 
@@ -56,10 +60,10 @@
 
 当时验证结果：
 
-- Windows 端 `build_bridge_now.bat` 构建成功。
+- 历史 Windows 端 `build_bridge_now.bat` 构建成功；该脚本已在 2026-06-21 16:26 清理中删除，当前本地构建入口为 `scripts/build_native_bridge.ps1`。
 - 当时 staticlib：132,250,204 bytes。
 - 当时 SHA256：`DEA5CF31A6A088231BE20E64BE2CB77A1C53DBA5921385E249A201B6050FF80C`。
-- HAP 构建成功，安装到无线设备 `192.168.11.100:36169`。
+- HAP 构建成功，安装到无线设备 `192.168.11.102:36169`。
 - 日志确认：
   - `RustDesk bridge loader module registered`
   - `initializeRuntimeFn returned`
@@ -105,7 +109,7 @@
 
 ## Ubuntu 交叉编译归档
 
-Ubuntu 交叉编译路径曾验证成功，但当前优先使用 Windows 的 `build_bridge_now.bat`，因为它和 DevEco/HAP 构建环境一致。
+Ubuntu 交叉编译路径曾验证成功。历史上曾优先使用 Windows 的 `build_bridge_now.bat`；2026-06-21 清理后该旧脚本已删除，当前优先使用 Core 仓库 `scripts/build_native_bridge.ps1`，输出统一到 `%VSCODE_ROOT%\99_Temp\librustdesk_core\cargo_target`。
 
 关键认知：
 

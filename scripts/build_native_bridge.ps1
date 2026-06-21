@@ -5,10 +5,18 @@ param(
 
 $ErrorActionPreference = "Stop"
 
-# Create log file
-$logFile = Join-Path $PSScriptRoot "..\build_debug_$(Get-Date -Format 'yyyyMMdd_HHmmss').log"
-$cargoLogFile = Join-Path $PSScriptRoot "..\cargo_build_$(Get-Date -Format 'yyyyMMdd_HHmmss').log"
-$envLogFile = Join-Path $PSScriptRoot "..\build_env_$(Get-Date -Format 'yyyyMMdd_HHmmss').log"
+# Keep parallel architecture builds from writing to the same log stream.
+$logStamp = Get-Date -Format 'yyyyMMdd_HHmmss_fff'
+$logTarget = $TargetTriple.Replace('-', '_')
+$logRoot = if ($env:RUSTDESK_BUILD_LOG_DIR) {
+  [System.IO.Path]::GetFullPath($env:RUSTDESK_BUILD_LOG_DIR)
+} else {
+  [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot ".."))
+}
+New-Item -ItemType Directory -Path $logRoot -Force | Out-Null
+$logFile = Join-Path $logRoot "build_debug_${logTarget}_${logStamp}.log"
+$cargoLogFile = Join-Path $logRoot "cargo_build_${logTarget}_${logStamp}.log"
+$envLogFile = Join-Path $logRoot "build_env_${logTarget}_${logStamp}.log"
 
 function Write-Log {
   param([string]$Message)
@@ -1351,7 +1359,12 @@ New-Item -ItemType Directory -Path $outputDir -Force | Out-Null
 Copy-Item -LiteralPath $sourceLib -Destination (Join-Path $outputDir "librustdesk_harmony_bridge.a") -Force
 Write-Log "Copied to: $outputDir\librustdesk_harmony_bridge.a"
 
-$appStaticLib = Join-Path $projectRoot "entry\src\main\libs\$libArchDir\librustdesk_core.a"
+$appProjectRoot = if ($env:RUSTDESK_HARMONY_APP_ROOT) {
+  [System.IO.Path]::GetFullPath($env:RUSTDESK_HARMONY_APP_ROOT)
+} else {
+  $projectRoot
+}
+$appStaticLib = Join-Path $appProjectRoot "entry\src\main\libs\$libArchDir\librustdesk_core.a"
 New-Item -ItemType Directory -Path (Split-Path -Parent $appStaticLib) -Force | Out-Null
 Copy-Item -LiteralPath $sourceLib -Destination $appStaticLib -Force
 Write-Log "Copied to: $appStaticLib"

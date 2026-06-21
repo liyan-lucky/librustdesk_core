@@ -2,6 +2,25 @@
 
 > 记录容易复发的构建、发布和排查问题。新增经验时优先写清楚：现象、根因、修复、以后如何避免。
 
+## 2026-06-21：同版本不等于同产物
+
+验收 HAP/Core 时必须联合核对 SHA256、mtime、BuildInfo、双架构 CoreBuildInfo、设备 updateTime 和 hilog，不能只看 `0.33.6`。还要确认两架构来自同一源码时间线：本轮曾发现默认 latest 下载把 2026-06-21 本地 x86_64 覆盖成 2026-06-20 线上资产，及时改为本地固定双架构、扩展 CoreBuildInfo/验包/审计为双架构强制断言，并重跑全部证据。冻结最终哈希后若功能源码、资源、构建配置或 Core 有任何变化，旧证据全部失效并重跑 100 轮最终审计。`99_Temp` 是多项目共享目录，禁止整体清理，所有 APK 永不删除；一次性密码不进入任何持久化介质。华为被控输入是明确搁置边界，不应伪装成已支持。
+
+## 2026-06-21: 构建/测试路径必须统一到 `%VSCODE_ROOT%\99_Temp`
+
+- 散落的 `F:\99_Temp`、仓库内 `.codex_*`、`%TEMP%` 截图和旧 `99_Temp\backups` 会造成 HAP/核心产物新旧混淆，也容易留下含隐私的布局/截图。
+- Core 本地构建必须显式设置 `CARGO_TARGET_DIR`、构建缓存和日志目录到 `%VSCODE_ROOT%\99_Temp\librustdesk_core\...`，不要依赖个人临时习惯路径。
+- 清理前先确认最新 `.a`、HAP SHA256、BuildInfo/CoreBuildInfo 已写入文档；清理后应能按 `docs/WORKSPACE_PATHS.md` 重新构建。
+- 2026-06-21 已按该规则清理：`F:\99_Temp`、旧散落备份、App 仓库 `.codex_*` 和 `%TEMP%` 诊断文件删除；最新 Core/HAP 产物迁移到 `99_Temp`，并创建清理后 App/Core 备份。16:26 二次清理继续删除工作区根 `_tmp_*`、旧 target/HAP/clone/log/cache 和 IDE/工具缓存；保留/删除清单以 `docs/WORKSPACE_PATHS.md` 为准。
+
+## 2026-06-20: option 下发不等于会话功能完成
+
+- 菜单勾选、配置持久化和 `session-option` 事件只证明命令链前半段。
+- “显示远程光标”已有 App overlay，但 Core 官方 `Interface` cursor 回调为空，因此没有 cursor data/position 回流，功能仍未实现。
+- 所有会话菜单必须同时检查回调/命令、远端实际行为、UI 渲染和断开清理；不得用静态审计或日志行替代设备效果。
+- `block-input` 不能通过通用 `get_toggle_option()` 的 option fallback 读取：当前该函数没有对应分支，菜单会错误显示未选中。应以官方 `update_block_input_state` 回调为权威状态，并调查 `unblock-input` 后出现的会话终止事件。
+- 文件传输存在 FileManager 调用和 job 事件也不代表端到端完成；必须用真实文件验证目录、双向传输、进度、覆盖、取消、校验和错误恢复。
+
 ## 2026-06-19: 双架构核心构建、发布门禁与 IPv4/IPv6 候选地址
 
 ### 现象
@@ -353,7 +372,7 @@
 
 ### Validation
 
-- Local cold validation in `L:\Visual_Studio_Code\99_Temp\rustdesk_harmonyos_extra_cxx_validate` rebuilt `libvpx.a` (`3,302,304` bytes) and `libyuv.a` (`683,472` bytes), then completed the full Cargo build.
+- Historical local cold validation in `L:\Visual_Studio_Code\99_Temp\rustdesk_harmonyos_extra_cxx_validate` rebuilt `libvpx.a` (`3,302,304` bytes) and `libyuv.a` (`683,472` bytes), then completed the full Cargo build. Current work must use `%VSCODE_ROOT%\99_Temp` / `F:\Visual_Studio_Code\99_Temp` instead of recreating the old L: path.
 - Produced local core: `129,593,638` bytes, SHA256 `2322E55089629C7CB9FFD426481220BDD43AB3C3DA46F37D85AD0A85DD5ADDFB`.
 - Online run `27458205351` proved the MSYS2 package was installed, but the script checked the wrong root (`C:\msys64`). The follow-up fix probes `msys2.cmd` first and only then falls back to PATH or `C:\msys64`.
 - Local validation after the MSYS2-root fix used `C:\rustdesk_harmony_decoder_validate`: an attempted decoder-only libvpx build produced `libvpx.a` but failed Cargo because `vp8cx.h` was not installed; restoring full encoder support produced `libvpx.a` (`3,302,224` bytes), full Cargo exit code `0`, and local core `129,592,014` bytes, SHA256 `32F3B3AC37EC82C94F2B4B3BA041459D2AF8ADA6AB1F3A57B39056F460F61B5F`.
@@ -407,3 +426,23 @@ CARGO_PROFILE_RELEASE_STRIP=false
 - 不要为了临时排查把 `-Profile dev` 留在发布 workflow；如需 debug 产物，应上传到单独 artifact，不要进入 release asset。
 - 不要随意在 workflow 中设置 `CARGO_PROFILE_RELEASE_*` 覆盖项；必须覆盖时同步更新 `CORE.md` 和本文件。
 - 每次替换 HAP 项目的 native core 前，至少检查 size 和 SHA256。
+
+## 2026-06-20: Isolate stale Harmony sessions by generation
+
+### What happened
+
+- VM evidence showed a new password connection reaching connected, then an older session thread emitted `Reset by the peer` and changed the shared state to error.
+- App-side event deduplication was insufficient because the stale Rust callback mutated core state before ArkTS saw the event.
+- A password accepted without explicit App persistence could remain in upstream `PeerConfig`, making a later request appear to bypass password input.
+
+### Fix and rule
+
+- Every Harmony session handler carries a monotonically increasing generation. Starting or closing a session invalidates all previous handlers.
+- Guard state-changing callbacks, queued events, quality updates and RGBA publication with `is_current()`; do not only guard `on_connected()`.
+- Clear upstream peer password before a new Harmony request. The App decides whether a password is remembered and passes an explicit password when required.
+- Treat `peer-info`, `connection-type` and fingerprint as metadata. Only the official connected callback may publish authenticated session state.
+
+## 2026-06-20: Parallel target builds need unique log paths
+
+- Timestamp-to-second log names collide when arm64 and x86_64 scripts start together, causing a misleading stream-read failure before Cargo runs.
+- Include target triple and milliseconds in every per-run log file. Parallel local validation must be part of any build-script change that claims dual-architecture support.

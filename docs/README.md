@@ -2,6 +2,10 @@
 
 > 核心项目文档。所有核心相关的架构、编译、桥接函数、调试文档均在此维护。
 
+> 2026-06-21 23:23：本地双架构集成、固定 HAP 100 轮审计和真机冷启动已通过。当前只剩清理/备份、双仓库发布与线上资产下载复验。先读 `CORE.md`、`CONNECTION_DEBUG_LOG.md`、`WORKSPACE_PATHS.md`，再读 App `docs/AGENT_HANDOFF.md` 的最新摘要。
+
+> 2026-06-21 路径规范：Core 构建、测试、日志、备份统一写入 `%VSCODE_ROOT%\99_Temp`（当前 `F:\Visual_Studio_Code\99_Temp`），详见 `docs/WORKSPACE_PATHS.md`。不要使用盘符根 `F:\99_Temp`、工作区根 `_tmp_*` 或仓库内临时目录作为长期输出。16:26 二次清理后，Core 仓库内 target/log/cache 已删除，当前 ignored 保留项只应是 `entry/`、`rdev-fork/`、`rustdesk-master/src/version.rs`。
+
 > 2026-06-16 Linux 构建经验：新增 `.github/workflows/build-core-linux.yml`，使用 `ubuntu-22.04` runner 在线构建 `librustdesk_core.a`。仅手动触发，不自动触发。需要设置仓库密钥 `OHOS_SDK_LINUX_ZIP_URL`（Linux 版 OHOS Native SDK 下载地址）。Linux 构建不需要 MSYS2，直接用系统 bash/perl/make 编译依赖库，构建速度应快于 Windows。发布标签格式为 `core-linux-*`，与 Windows 的 `core-*` 区分。所有 Release 发布说明已统一为中文默认。
 
 > 2026-06-13 经验：如果手机端已 `session-connected` 且 `quality-status` 显示 `codec_format=VP9`，但没有 `video-frame`，先看 `CORE.md` 的 OHOS VP8/VP9 解码修复记录和 `CONNECTION_DEBUG_LOG.md`，不要只查 `session_next_rgba()`。
@@ -35,6 +39,7 @@
 | 文件 | 说明 |
 |------|------|
 | `CORE.md` | 核心架构、可复现编译、桥接函数完整说明（369个函数）、CMake链接、编译问题 |
+| `WORKSPACE_PATHS.md` | Core 构建/测试/备份路径规范；必须与 App 仓库同名文档保持一致 |
 | `LESSONS_LEARNED.md` | 经验教训和易复发构建问题 |
 | `BUILD_ARCHIVE.md` | 历史构建、脚本、Ubuntu路径和早期会话归档 |
 | `CONNECTION_DEBUG_LOG.md` | 连接问题逐轮排查记录 |

@@ -33,6 +33,94 @@ use std::time as std_time;
 
 use crate::ipc;
 
+extern "C" {
+    fn rustdesk_ohos_inject_mouse(mask: i32, x: i32, y: i32) -> i32;
+    fn rustdesk_ohos_inject_key(
+        control_key: i32,
+        unicode_value: u32,
+        down: i32,
+        press: i32,
+        modifiers: u32,
+    ) -> i32;
+}
+
+fn input_modifier_mask(event: &KeyEvent) -> u32 {
+    event.modifiers.iter().fold(0_u32, |mask, modifier| {
+        mask | match modifier.enum_value() {
+            Ok(ControlKey::Alt) | Ok(ControlKey::RAlt) => 1,
+            Ok(ControlKey::Control) | Ok(ControlKey::RControl) => 2,
+            Ok(ControlKey::Shift) | Ok(ControlKey::RShift) => 4,
+            Ok(ControlKey::Meta) | Ok(ControlKey::RWin) => 8,
+            _ => 0,
+        }
+    })
+}
+
+fn inject_key_event(event: &KeyEvent) -> (&'static str, i32) {
+    let down = if event.down { 1 } else { 0 };
+    let press = i32::from(event.press);
+    let modifiers = input_modifier_mask(event);
+    match &event.union {
+        Some(key_event::Union::ControlKey(value)) => (
+            "control",
+            unsafe {
+                rustdesk_ohos_inject_key(
+                    value.value(),
+                    0,
+                    down,
+                    press,
+                    modifiers,
+                )
+            },
+        ),
+        Some(key_event::Union::Chr(value)) => (
+            "position",
+            unsafe {
+                rustdesk_ohos_inject_key(-1, *value, down, press, modifiers)
+            },
+        ),
+        Some(key_event::Union::Unicode(value)) => (
+            "unicode",
+            unsafe {
+                rustdesk_ohos_inject_key(-1, *value, down, press, modifiers)
+            },
+        ),
+        Some(key_event::Union::Seq(value)) => {
+            let mut result = 0;
+            for character in value.chars() {
+                let current = unsafe {
+                    rustdesk_ohos_inject_key(
+                        -1,
+                        character as u32,
+                        1,
+                        1,
+                        modifiers,
+                    )
+                };
+                if current != 0 {
+                    result = current;
+                    break;
+                }
+            }
+            ("sequence", result)
+        }
+        Some(key_event::Union::Win2winHotkey(value)) => (
+            "hotkey",
+            unsafe {
+                rustdesk_ohos_inject_key(
+                    -1,
+                    value & 0xffff,
+                    down,
+                    press,
+                    modifiers,
+                )
+            },
+        ),
+        Some(_) => ("unsupported", 401),
+        None => ("none", 401),
+    }
+}
+
 // ============================================================
 // Platform stubs
 // ============================================================
@@ -304,6 +392,16 @@ pub mod video_service {
         capture_width: usize,
         capture_height: usize,
     ) -> ResultType<HashSet<i32>> {
+        sp.snapshot(|new_subscribers| {
+            // Match the official video service: move a lone first subscriber into
+            // the active set, or restart the encoder when joining an existing stream.
+            if new_subscribers.has_subscribes() {
+                log::info!("OHOS video_service switching for new subscriber");
+                bail!("SWITCH");
+            }
+            Ok(())
+        })?;
+
         match encoder.encode_to_message(frame, ms) {
             Ok(mut vf) => {
                 *encode_fail_counter = 0;
@@ -1041,7 +1139,11 @@ async fn handle_incoming_message(
                     &format!("id={} wrong password", lr.my_id),
                     &lr.my_id,
                 );
-                return false;
+                // Keep the original socket alive so the controlling client can
+                // display its password prompt and submit another LoginRequest.
+                // Closing here turns an ordinary empty/wrong-password challenge
+                // into "Connection reset by peer" before the prompt is usable.
+                return true;
             }
 
             *authorized = true;
@@ -1129,9 +1231,13 @@ async fn handle_incoming_message(
         }
         Some(message::Union::MouseEvent(me)) => {
             if *keyboard {
+                let result = unsafe { rustdesk_ohos_inject_mouse(me.mask, me.x, me.y) };
                 crate::harmony_bridge::core::queue_event(
                     "mouse-input",
-                    &format!("mask={};x={};y={}", me.mask, me.x, me.y),
+                    &format!(
+                        "mask={};x={};y={};result={result}",
+                        me.mask, me.x, me.y
+                    ),
                     "",
                 );
             }
@@ -1139,9 +1245,19 @@ async fn handle_incoming_message(
         }
         Some(message::Union::KeyEvent(me)) => {
             if *keyboard {
+                let (control_key, unicode_value) = match &me.union {
+                    Some(key_event::Union::ControlKey(value)) => (value.value(), 0),
+                    Some(key_event::Union::Chr(value)) => (-1, *value),
+                    _ => (-1, 0),
+                };
+                let modifiers = input_modifier_mask(&me);
+                let (kind, result) = inject_key_event(&me);
                 crate::harmony_bridge::core::queue_event(
                     "keyboard-input",
-                    &format!("key={:?};down={}", me.union, me.down),
+                    &format!(
+                        "kind={kind};control={control_key};unicode={unicode_value};down={};press={};modifiers={modifiers};result={result}",
+                        me.down, me.press,
+                    ),
                     "",
                 );
             }

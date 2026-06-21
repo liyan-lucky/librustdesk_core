@@ -2,6 +2,8 @@
 
 > 本文档记录 `rustdesk-master/` 中与官方 RustDesk 1.4.7 不同的 OHOS 专属代码位置，便于后续更新官方源码时快速定位和合并。
 
+> 2026-06-21 23:23 当前映射已集成到 arm64/x86_64 候选库并进入固定 HAP；当前哈希和验证证据以 `CORE.md` 为准。华为被控输入/accessibility 不再是活动实现路径，仅保留 App 侧返回 `201` 的链接兼容 stub。
+
 ## 代码分类
 
 ### A. 已移入 `harmony_bridge/` 目录的 OHOS 替代文件

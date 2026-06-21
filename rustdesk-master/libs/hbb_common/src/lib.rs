@@ -227,6 +227,9 @@ pub fn get_version_from_url(url: &str) -> String {
 
 pub fn gen_version() {
     println!("cargo:rerun-if-changed=Cargo.toml");
+    if std::env::var("RUSTDESK_SKIP_VERSION_WRITE").as_deref() == Ok("1") {
+        return;
+    }
     use std::io::prelude::*;
     let mut file = File::create("./src/version.rs").unwrap();
     for line in read_lines("Cargo.toml").unwrap().flatten() {

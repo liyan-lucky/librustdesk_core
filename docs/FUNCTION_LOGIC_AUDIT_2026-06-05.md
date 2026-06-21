@@ -2,6 +2,8 @@
 
 > 本文记录本轮对 `rustdesk_harmonyos` 的项目文档、便携路径、构建链、功能实现和逻辑风险的集中审查。当前工作区从固定电脑迁移到可移动盘，后续可能在不同电脑上使用，因此所有路径判断均以“可移动 `%VSCODE_ROOT%` 根目录”为前提。
 
+> 历史审查说明（2026-06-21 23:23）：本文保留 2026-06-05 当时结论；当前双架构 Core、真机和固定 HAP 结果以 `CORE.md`、`CONNECTION_DEBUG_LOG.md` 和 App `docs/AGENT_HANDOFF.md` 最新摘要为准，旧未实现判断不得直接用于当前发布结论。
+
 ## 审查范围
 
 - 已读取并同步理解：`docs/README.md`、`docs/CORE.md`、`docs/PROGRESS.md`、`docs/FILES.md`、`docs/DESIGN.md`、`docs/UI.md`、`docs/ISSUES.md`、`docs/BUILD_ARCHIVE.md`、`docs/GIT_PUBLISH.md`、`docs/SESSION3_SUMMARY.md`、`docs/UBUNTU_CROSS_COMPILE_GUIDE.md`、`scripts/README.md`、`CHANGELOG.md`。

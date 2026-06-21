@@ -2,6 +2,8 @@
 
 > 供新对话接续使用，包含完整上下文和下一步操作
 
+> 历史会话说明（2026-06-21 23:23）：本文仅作 2026-06-01 归档，不能作为当前接力入口。当前双架构哈希、固定 HAP、真机和发布顺序见 `CORE.md` 与 App `docs/AGENT_HANDOFF.md`。
+
 ## 本次会话目标
 
 修复 RustDesk HarmonyOS 客户端构建后连接时提示"官方接入口未导出"的问题，确保 Rust 原生核心能正确初始化和运行。
@@ -47,9 +49,9 @@
 
 ## 接续结果 (2026-06-01)
 
-Windows 端 Rust 核心已继续编译成功，`build_bridge_now.bat` 已生成并同步新 staticlib。
+历史记录：Windows 端 Rust 核心当时已继续编译成功，`build_bridge_now.bat` 曾生成并同步新 staticlib；该旧脚本已在 2026-06-21 16:26 清理中删除，当前构建入口为 Core 仓库 `scripts/build_native_bridge.ps1`。
 
-- 产物: `%VSCODE_ROOT%\99_Temp\rustdesk_harmonyos_build\native_rust_core\target\harmony\librustdesk_harmony_bridge.a`
+- 历史产物: `%VSCODE_ROOT%\99_Temp\rustdesk_harmonyos_build\native_rust_core\target\harmony\librustdesk_harmony_bridge.a`（已在 2026-06-21 16:26 清理中删除；当前标准产物见 `%VSCODE_ROOT%\99_Temp\librustdesk_core\cargo_target\...`）
 - HAP 链接副本: `%VSCODE_ROOT%\11_Rustdesk_harmonyos\entry\src\main\libs\arm64\librustdesk_core.a`
 - 大小: 132,262,622 bytes
 - SHA256: `27D91DB4EBC2BF7F51A501103D34050534A39727C8EA710F5C9BAB1133A6FB21`
@@ -75,17 +77,18 @@ node scripts\run_hvigor_with_sdk_patch.js assembleHap
 - 项目根目录为 `%VSCODE_ROOT%\11_Rustdesk_harmonyos`，顶层直接包含 App 项目文件。
 - 生成目录 `.hvigor/`、`oh_modules/`、`entry/build/`、`entry/.cxx/` 不提交到远端。
 - `docs/o2.md` 和根目录 `stub_symbols.txt` 已删除，docs 当前保留8个Markdown
-- `99_Temp/` 仅保留 `rustdesk-master/` 源码和 `rustdesk_harmonyos_build/` 工具/SDK/外部源码/patch/当前产物
+- 历史状态：`99_Temp/` 当时仅保留 `rustdesk-master/` 源码和 `rustdesk_harmonyos_build/` 工具/SDK/外部源码/patch/当前产物。当前 2026-06-21 清理后状态以 `docs/WORKSPACE_PATHS.md` 为准。
 - 已删除 `harmonyos_build/`、`harmonyos_cache/`、`rustdesk_archive/`、`rustdesk_compile_fix_backup/`、官方APK、vcpkg下载/构建缓存、Rust target缓存
-- 当前 `native_rust_core/target/` 只保留 `target/harmony/librustdesk_harmony_bridge.a`，重新编译会全量构建
+- 历史 `native_rust_core/target/` 曾只保留 `target/harmony/librustdesk_harmony_bridge.a`；该 target 已清理，当前本地构建统一输出到 `%VSCODE_ROOT%\99_Temp\librustdesk_core\cargo_target`。
 
 ### Step 1: 如需重新编译 Rust 核心
 ```bash
 # 直接运行构建脚本 (会自动设置所有环境变量；当前target缓存已清理，会全量编译)
-%VSCODE_ROOT%\99_Temp\rustdesk_harmonyos_build\build_bridge_now.bat
+历史脚本（已清理）：%VSCODE_ROOT%\99_Temp\rustdesk_harmonyos_build\build_bridge_now.bat。当前请使用 `%VSCODE_ROOT%\13_librustdesk_core\scripts\build_native_bridge.ps1`。
 ```
 产物会自动复制到:
-- `%VSCODE_ROOT%\99_Temp\rustdesk_harmonyos_build\native_rust_core\target\harmony\librustdesk_harmony_bridge.a`
+- 历史路径（已清理）：`%VSCODE_ROOT%\99_Temp\rustdesk_harmonyos_build\native_rust_core\target\harmony\librustdesk_harmony_bridge.a`
+- 当前路径：`%VSCODE_ROOT%\99_Temp\librustdesk_core\cargo_target\<target-triple>\release\librustdesk_harmony_bridge.a`
 - `%VSCODE_ROOT%\11_Rustdesk_harmonyos\entry\src\main\libs\arm64\librustdesk_core.a`
 
 当前已解决的Windows交叉编译问题包括 stable/rustix、libsodium、machine-uid、socket2、libsodium-sys、kcp-sys、scrap、rdev、rustdesk-master build.rs。
@@ -125,8 +128,8 @@ hdc shell "hilog -x | grep -E 'coreReady|RustDeskLoader'"
 - `entry/src/main/ets/common/BuildInfo.ets` — 构建时间戳
 
 ### 构建脚本
-- `%VSCODE_ROOT%\99_Temp\rustdesk_harmonyos_build\build_bridge_now.bat` — Windows端一键编译脚本
-- `%VSCODE_ROOT%\99_Temp\rustdesk_harmonyos_build\build_libsodium_msys.sh` — libsodium交叉编译
+- `%VSCODE_ROOT%\99_Temp\rustdesk_harmonyos_build\build_bridge_now.bat` — 历史 Windows 端一键编译脚本，已清理；当前使用 `scripts\build_native_bridge.ps1`
+- `%VSCODE_ROOT%\99_Temp\rustdesk_harmonyos_build\build_libsodium_msys.sh` — 历史 libsodium 交叉编译脚本，已清理
 - `%VSCODE_ROOT%\99_Temp\rustdesk_harmonyos_build\patches\machine-uid\381ff57\` — machine-uid patch
 
 ### 关键只读文件
@@ -142,7 +145,7 @@ hdc shell "hilog -x | grep -E 'coreReady|RustDeskLoader'"
 - Rust 作为核心编程语言，HarmonyOS/OpenHarmony 开发环境（DevEco Studio + HDC + ArkTS/ArkUI）
 - 希望分析问题原因并解释逻辑原理
 - 偏好中文交互和 UI 显示
-- 使用 192.168.11.100:36169 作为测试设备地址
+- 使用 192.168.11.102:36169 作为测试设备地址
 - Windows 端编译 Rust 核心（使用 99_Temp 的 SDK 避免权限问题），不再依赖 Ubuntu
 - SDK 使用 `99_Temp/rustdesk_harmonyos_build/deveco-sdk/`（从 DevEco Studio 同步的完整 SDK）
 

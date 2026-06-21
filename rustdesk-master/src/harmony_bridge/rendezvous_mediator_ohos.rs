@@ -9,7 +9,9 @@ use std::{
 use hbb_common::{
     allow_err,
     bytes::Bytes,
-    config::{self, option2bool, Config, CONNECT_TIMEOUT, RENDEZVOUS_PORT},
+    config::{
+        self, keys::OPTION_DIRECT_SERVER, option2bool, Config, CONNECT_TIMEOUT, RENDEZVOUS_PORT,
+    },
     futures::future::join_all,
     log,
     protobuf::{Enum as _, Message as _},
@@ -69,12 +71,17 @@ impl RendezvousMediator {
         crate::hbbs_http::sync::start();
 
         let server = new_server();
+        let direct_server = server.clone();
+        tokio::spawn(async move {
+            direct_server_loop(direct_server).await;
+        });
         if config::option2bool("stop-service", &Config::get_option("stop-service")) {
             crate::test_rendezvous_server();
         }
 
         start_lan_listener_once();
 
+        crate::harmony_bridge::core::set_incoming_service_started(true);
         crate::harmony_bridge::core::queue_event(
             "server-started",
             "OHOS server started, connecting to signaling servers",
@@ -151,9 +158,20 @@ impl RendezvousMediator {
                     match n {
                         Some(Ok((bytes, _))) => {
                             if let Ok(msg) = Message::parse_from_bytes(&bytes) {
+                                let registration_reply = matches!(
+                                    &msg.union,
+                                    Some(rendezvous_message::Union::RegisterPeerResponse(_))
+                                        | Some(rendezvous_message::Union::RegisterPkResponse(_))
+                                );
                                 allow_err!(
                                     rz.handle_resp(msg.union, &mut socket, &addr, &server).await
                                 );
+                                if registration_reply {
+                                    last_register_resp = Some(Instant::now());
+                                    last_register_sent = None;
+                                    fails = 0;
+                                    reg_timeout = MIN_REG_TIMEOUT;
+                                }
                             }
                         }
                         Some(Err(e)) => {
@@ -201,7 +219,11 @@ impl RendezvousMediator {
         Ok(())
     }
 
-    async fn register_peer(&self, socket: &mut FramedSocket, addr: &TargetAddr<'static>) -> ResultType<()> {
+    async fn register_peer(
+        &self,
+        socket: &mut FramedSocket,
+        addr: &TargetAddr<'static>,
+    ) -> ResultType<()> {
         if !Config::get_key_confirmed() || !Config::get_host_key_confirmed(&self.host_prefix) {
             log::info!("OHOS register_pk for {}", self.host_prefix);
             self.register_pk(socket, addr).await?;
@@ -219,13 +241,19 @@ impl RendezvousMediator {
         Ok(())
     }
 
-    async fn register_pk(&self, socket: &mut FramedSocket, addr: &TargetAddr<'static>) -> ResultType<()> {
+    async fn register_pk(
+        &self,
+        socket: &mut FramedSocket,
+        addr: &TargetAddr<'static>,
+    ) -> ResultType<()> {
         let id = Config::get_id();
         let (_, pk) = Config::get_key_pair();
         let mut msg_out = Message::new();
         msg_out.set_register_pk(RegisterPk {
             id,
+            uuid: hbb_common::get_uuid().into(),
             pk: pk.into(),
+            no_register_device: Config::no_register_device(),
             ..Default::default()
         });
         socket.send(&msg_out, addr.clone()).await?;
@@ -243,6 +271,11 @@ impl RendezvousMediator {
         match msg {
             Some(rendezvous_message::Union::RegisterPeerResponse(rpr)) => {
                 log::info!("OHOS RegisterPeerResponse from {}", self.host_prefix);
+                crate::harmony_bridge::core::queue_event(
+                    "rendezvous-registered",
+                    &format!("peer response from {}", self.host_prefix),
+                    "",
+                );
                 if rpr.request_pk {
                     self.register_pk(socket, addr).await?;
                 }
@@ -255,12 +288,25 @@ impl RendezvousMediator {
                         *SOLVING_PK_MISMATCH.lock().await = "".to_owned();
                         NEEDS_DEPLOY.store(false, Ordering::SeqCst);
                         log::info!("OHOS RegisterPk OK for {}", self.host_prefix);
+                        crate::harmony_bridge::core::queue_event(
+                            "rendezvous-registered",
+                            &format!("public key accepted by {}", self.host_prefix),
+                            "",
+                        );
+                    }
+                    Ok(register_pk_response::Result::UUID_MISMATCH) => {
+                        self.handle_uuid_mismatch(socket, addr).await?;
                     }
                     Ok(register_pk_response::Result::NOT_DEPLOYED) => {
                         NEEDS_DEPLOY.store(true, Ordering::SeqCst);
                         Config::set_key_confirmed(false);
                         Config::set_host_key_confirmed(&self.host_prefix, false);
                         log::warn!("OHOS server requires deployment for {}", self.host_prefix);
+                        crate::harmony_bridge::core::queue_event(
+                            "rendezvous-needs-deploy",
+                            &format!("server {} requires device deployment", self.host_prefix),
+                            "",
+                        );
                     }
                     _ => {
                         log::error!("OHOS unknown RegisterPkResponse");
@@ -285,8 +331,15 @@ impl RendezvousMediator {
                 });
             }
             Some(rendezvous_message::Union::ConfigureUpdate(cu)) => {
-                Config::set_option("rendezvous-servers".to_owned(), cu.rendezvous_servers.join(","));
+                let previous = Config::get_rendezvous_servers();
+                Config::set_option(
+                    "rendezvous-servers".to_owned(),
+                    cu.rendezvous_servers.join(","),
+                );
                 Config::set_serial(cu.serial);
+                if previous != Config::get_rendezvous_servers() {
+                    Self::restart();
+                }
             }
             Some(rendezvous_message::Union::FetchLocalAddr(fla)) => {
                 let rz = self.clone();
@@ -306,6 +359,30 @@ impl RendezvousMediator {
             _ => {}
         }
         Ok(())
+    }
+
+    async fn handle_uuid_mismatch(
+        &self,
+        socket: &mut FramedSocket,
+        addr: &TargetAddr<'static>,
+    ) -> ResultType<()> {
+        {
+            let mut solving = SOLVING_PK_MISMATCH.lock().await;
+            if solving.is_empty() || *solving == self.host {
+                log::info!("OHOS UUID_MISMATCH received from {}", self.host);
+                Config::set_key_confirmed(false);
+                Config::update_id();
+                *solving = self.host.clone();
+                crate::harmony_bridge::core::queue_event(
+                    "rendezvous-id-updated",
+                    &format!("UUID mismatch resolved for {}", self.host_prefix),
+                    "",
+                );
+            } else {
+                return Ok(());
+            }
+        }
+        self.register_pk(socket, addr).await
     }
 
     async fn handle_punch_hole(&self, ph: PunchHole, server: ServerPtr) -> ResultType<()> {
@@ -371,10 +448,9 @@ impl RendezvousMediator {
                 .await;
         }
 
-        let nat_type = hbb_common::protobuf::Enum::from_i32(
-            hbb_common::config::Config::get_nat_type(),
-        )
-        .unwrap_or(hbb_common::protos::rendezvous::NatType::UNKNOWN_NAT);
+        let nat_type =
+            hbb_common::protobuf::Enum::from_i32(hbb_common::config::Config::get_nat_type())
+                .unwrap_or(hbb_common::protos::rendezvous::NatType::UNKNOWN_NAT);
         let msg_punch = PunchHoleSent {
             socket_addr: ph.socket_addr,
             id: hbb_common::config::Config::get_id(),
@@ -506,9 +582,18 @@ impl RendezvousMediator {
         }
 
         let address_family_mismatch = is_ipv4(&self.addr) != addr.is_ipv4();
-        if is_ipv4(&self.addr) && !relay && !config::is_disable_tcp_listen() && !address_family_mismatch {
+        if is_ipv4(&self.addr)
+            && !relay
+            && !config::is_disable_tcp_listen()
+            && !address_family_mismatch
+        {
             if let Err(err) = self
-                .handle_intranet_(fla.clone(), server.clone(), relay_server.clone(), socket_addr_v6.clone())
+                .handle_intranet_(
+                    fla.clone(),
+                    server.clone(),
+                    relay_server.clone(),
+                    socket_addr_v6.clone(),
+                )
                 .await
             {
                 log::debug!("OHOS Failed to handle intranet: {:?}, will try relay", err);
@@ -538,7 +623,8 @@ impl RendezvousMediator {
     ) -> ResultType<()> {
         let peer_addr = hbb_common::AddrMangle::decode(&fla.socket_addr);
         log::debug!("OHOS Handle intranet from {:?}", peer_addr);
-        let mut socket = hbb_common::socket_client::connect_tcp(&*self.host, CONNECT_TIMEOUT).await?;
+        let mut socket =
+            hbb_common::socket_client::connect_tcp(&*self.host, CONNECT_TIMEOUT).await?;
         let local_addr = socket.local_addr();
         let local_addr: std::net::SocketAddr =
             format!("{}:{}", local_addr.ip(), local_addr.port()).parse()?;
@@ -577,9 +663,106 @@ fn start_lan_listener_once() {
         if let Err(err) = crate::lan::start_listening() {
             LAN_LISTENER_STARTED.store(false, Ordering::SeqCst);
             hbb_common::log::error!("LAN listener failed: {}", err);
-            crate::harmony_bridge::core::queue_event("lan-listener", &format!("failed: {}", err), "");
+            crate::harmony_bridge::core::queue_event(
+                "lan-listener",
+                &format!("failed: {}", err),
+                "",
+            );
         }
     });
+}
+
+fn get_direct_port() -> i32 {
+    let mut port = Config::get_option("direct-access-port")
+        .parse::<i32>()
+        .unwrap_or(0);
+    if port <= 0 {
+        port = RENDEZVOUS_PORT + 2;
+    }
+    port
+}
+
+async fn direct_server_loop(server: ServerPtr) {
+    let mut listener = None;
+    let mut port = 0;
+    loop {
+        let disabled = !option2bool(
+            OPTION_DIRECT_SERVER,
+            &Config::get_option(OPTION_DIRECT_SERVER),
+        ) || option2bool("stop-service", &Config::get_option("stop-service"));
+        if !disabled && listener.is_none() {
+            port = get_direct_port();
+            match hbb_common::tcp::listen_any(port as _).await {
+                Ok(value) => {
+                    listener = Some(value);
+                    log::info!("OHOS direct server listening on port {}", port);
+                    crate::harmony_bridge::core::queue_event(
+                        "direct-listener",
+                        &format!("listening on {}", port),
+                        "",
+                    );
+                }
+                Err(err) => {
+                    log::error!(
+                        "OHOS direct server failed to listen on port {}: {}",
+                        port,
+                        err
+                    );
+                    crate::harmony_bridge::core::queue_event(
+                        "direct-listener-error",
+                        &format!("port {}: {}", port, err),
+                        "",
+                    );
+                    while port == get_direct_port()
+                        && option2bool(
+                            OPTION_DIRECT_SERVER,
+                            &Config::get_option(OPTION_DIRECT_SERVER),
+                        )
+                        && !option2bool("stop-service", &Config::get_option("stop-service"))
+                    {
+                        sleep(1.).await;
+                    }
+                }
+            }
+        }
+        if let Some(active_listener) = listener.as_mut() {
+            if disabled || port != get_direct_port() {
+                log::info!("OHOS direct server stopped");
+                listener = None;
+                continue;
+            }
+            if let Ok(Ok((stream, addr))) =
+                hbb_common::timeout(1000, active_listener.accept()).await
+            {
+                stream.set_nodelay(true).ok();
+                let local_addr = stream
+                    .local_addr()
+                    .unwrap_or(Config::get_any_listen_addr(true));
+                let server = server.clone();
+                crate::harmony_bridge::core::queue_event(
+                    "incoming-connection",
+                    &format!("Direct connection from {}", addr),
+                    "",
+                );
+                tokio::spawn(async move {
+                    allow_err!(
+                        crate::server::create_tcp_connection(
+                            server,
+                            hbb_common::Stream::from(stream, local_addr),
+                            addr,
+                            false,
+                            None,
+                        )
+                        .await
+                    );
+                });
+            } else {
+                sleep(0.1).await;
+            }
+        } else {
+            sleep(1.).await;
+        }
+    }
 }
 
 async fn start_ipv6(

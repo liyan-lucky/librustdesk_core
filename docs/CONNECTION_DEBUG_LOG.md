@@ -2,6 +2,33 @@
 
 > 本文记录每一轮连接和核心调试过程。当前结论以最新时间段为准，历史段落保留排查脉络。
 
+## 2026-06-21 23:48 final integrated device evidence
+
+Local same-source arm64 `E4614B...` and x86_64 `DB0283...` Core builds were embedded in App HAP SHA256 `1D5C7395753D4E8F143FA051E0E931CCFB6C48FFEDA03A8DF91282DD007EC8D2`, with both sizes/hashes embedded in CoreBuildInfo. The exact HAP was installed on `192.168.11.102:36169` with `updateTime=1782082072534`; forced cold-start PID `29233` reported NAPI 413 functions, `coreReady=true` and normal LAN/online query results, with no selected fatal/panic/signal. The fixed package passed connection-chain 83/83 and the 100-round full audit with zero failures. Huawei controlled-side input remains shelved and is not a release blocker.
+
+## 2026-06-21 latest local dual-arch core and phone share
+
+- 2026-06-21 17:06 user decision: Huawei phone controlled-side input/manipulation is unsupported and shelved. App no longer packages the accessibility extension, requests `ohos.permission.INPUT_MONITORING`, includes an ArkTS accessibility service, or links `ohinput`; App `ohos_stubs.cpp` keeps the Core input symbols as `201` stubs only. Do not block other release work on making Windows control the phone UI.
+- App rebuilt after this decision: signed HAP `34,233,149` bytes, SHA256 `A18FCCEE04A1903372124399035444B5BEBDF84FBB2B9F1918142C994C0797C9`, BuildInfo `2026-06-21 17:12`; local verify passed, not yet installed to phone.
+- Local arm64 release archive used by App: `131,091,732` bytes, SHA256 `E4614BAE4EDB54F2C0A2CFECE96A2E99D558B6900693B2B3A9B08B8F3DCD5D5D`.
+- Local x86_64 release archive used by App: `130,090,572` bytes, SHA256 `DB0283F44EA5E5D09A23D1756929B171F28FF2A602D595941902A18ECE5F17DD`.
+- `server_ohos.rs` changed the Wrong Password path to keep the original socket alive after sending the response. This allowed the Windows client to submit the password on the same incoming connection and reach the live session.
+- The previous HAP installed on the phone has SHA256 `487EB88719B505013666D74841974A9CF4B031BF6EBFBF2BD6A352089822A35E`, BuildInfo `2026-06-21 14:59`, and device `updateTime=1782050494366`; version string remained `0.32.0 / 1000172`.
+- Phone sharing produced real continuously refreshing video on Windows RustDesk. Controlled-side phone input is shelved after native injection result `201` and the user-confirmed Huawei limitation.
+- Cleanup follow-up: latest Core archives were copied to `%VSCODE_ROOT%\99_Temp\librustdesk_core\cargo_target\...`, app repo `.codex_*` caches were removed, and new App/Core backups were written after cleanup. The 2026-06-21 16:26 second cleanup also removed worktree-root `_tmp_*`, old target/HAP/clone/log/cache directories, and IDE/tool caches; the authoritative retained/deleted list is `docs/WORKSPACE_PATHS.md`.
+
+## 2026-06-21 workspace cleanup rule
+
+- All Core build/test outputs must be under `%VSCODE_ROOT%\99_Temp`; see `docs/WORKSPACE_PATHS.md`.
+- Do not use `F:\99_Temp`, App repo `.codex_core_*`, or `%TEMP%` as persistent build/test locations.
+
+## 2026-06-20 handoff status
+
+- Latest x86_64 five-codec Core build passed: 129,672,402 bytes, SHA256 `AF9F74082FFF1B807263D2D502AFE090B485ACE736BA007795D025D965DF6C69`.
+- Latest arm64 build is still pending; the App's current arm64 archive is older than the native AV1/H264/H265 decoder changes.
+- Session-menu runtime verification remains open. Remote cursor cannot work end to end until the empty Harmony Session cursor callbacks emit data/id/position/display bridge events.
+- New phone evidence: block-input remains visually unchecked, and sending unblock-input appears to trigger a retryable disconnect. The state read currently falls through `get_toggle_option("block-input")` to an empty generic option; preserve full event ordering before changing disconnect behavior. File transfer is also not end-to-end functional despite existing request/event scaffolding.
+
 ## 2026-06-19 双架构核心与 IPv4-only 手机连接修复
 
 ### 现象
@@ -40,7 +67,7 @@
 ### 验证
 
 - 从真实 `%VSCODE_ROOT%\13_librustdesk_core` 执行 `powershell -ExecutionPolicy Bypass -File scripts\build_native_bridge.ps1` 通过。
-- 本地产物：`F:\Visual_Studio_Code\99_Temp\rustdesk_harmonyos_build\native_rust_core\target\aarch64-unknown-linux-ohos\release\librustdesk_harmony_bridge.a`，`128,894,588` bytes，SHA256 `2DC3B655664B756E255684D28FBA0CB3A9DEC14E6080EA4682FA26486ADF9B6D`。
+- 历史本地产物：`F:\Visual_Studio_Code\99_Temp\rustdesk_harmonyos_build\native_rust_core\target\aarch64-unknown-linux-ohos\release\librustdesk_harmony_bridge.a`，`128,894,588` bytes，SHA256 `2DC3B655664B756E255684D28FBA0CB3A9DEC14E6080EA4682FA26486ADF9B6D`；该旧 target 已在 2026-06-21 16:26 清理中删除，当前标准路径见 `docs/WORKSPACE_PATHS.md`。
 - 11 App 使用该本地核心构建 `0.22.6` / versionCode `1000109`，signed HAP `18,433,473` bytes，SHA256 `4D669584F44B6462F570747723E66EB2894204FF7860CA0FBB27339D7FCE7DDD`；验包、66 项连接链路审计、无线安装启动和干净 app hilog 均通过。
 - 线上发布：GitHub Actions run `27563925971` 已成功发布 `core-81`，release body 已补中文说明；线上 asset `131,631,706` bytes，SHA256 `64463fa57005cd5ccd99bafa9a40f18a9d605f8e90f5e199f92b38abfcdb4829`。下一步让 11 App 强制拉取线上 latest core 重新构建和安装验证。
 
@@ -63,7 +90,7 @@
 ### 验证
 
 - 从真实 `%VSCODE_ROOT%\13_librustdesk_core` 执行 `powershell -NoProfile -ExecutionPolicy Bypass -File scripts\build_native_bridge.ps1` 通过。
-- 本地产物：`F:\Visual_Studio_Code\99_Temp\rustdesk_harmonyos_build\native_rust_core\target\aarch64-unknown-linux-ohos\release\librustdesk_harmony_bridge.a`，`128,711,798` bytes，SHA256 `877AA1B9F27425D07B31193E0CABE6804FDE88AD5F8B622B0F5D52865CC54D5F`。
+- 历史本地产物：`F:\Visual_Studio_Code\99_Temp\rustdesk_harmonyos_build\native_rust_core\target\aarch64-unknown-linux-ohos\release\librustdesk_harmony_bridge.a`，`128,711,798` bytes，SHA256 `877AA1B9F27425D07B31193E0CABE6804FDE88AD5F8B622B0F5D52865CC54D5F`；该旧 target 已在 2026-06-21 16:26 清理中删除，当前标准路径见 `docs/WORKSPACE_PATHS.md`。
 - `llvm-nm` 已确认导出：`rustdesk_bridge_update_incoming_screen_frame`、`rustdesk_bridge_get_incoming_screen_frame_metadata`、`rustdesk_bridge_copy_incoming_screen_frame`、`rustdesk_bridge_clear_incoming_screen_frame`。
 - GitHub Actions run `27526413545` 已成功发布 `core-80`：`https://github.com/liyan-lucky/librustdesk_core/releases/tag/core-80`；线上 asset `131,624,954` bytes，SHA256 `4047C8432BCA6C7F5FECBD4E1D6F55BE9717F28889B4699043A74138800E0E2A`，release body 已补中文说明。11 App 需强制拉取该线上核心后重新构建、验包、审计和安装。
 
@@ -162,7 +189,7 @@
   - FNV-1a 1MB: `45b5baa5`
   - SHA256: `6CEDA7DB08CE3FF5BF39AC4691DED2C502F749F22D5C715166256155559E4827`
 - HAP 构建通过，BuildInfo 编译时间：`2026-06-06 22:08`，版本 `0.6.17`。
-- 无线目标 `192.168.11.100:36169` 卸载旧版后安装成功，启动成功。
+- 无线目标 `192.168.11.102:36169` 卸载旧版后安装成功，启动成功。
 - hilog 确认：
   - `RustDesk bridge loader module registered (52 functions)` ✅
   - `module loaded via static import` ✅
@@ -206,7 +233,7 @@
 - App 显示版本：`0.6.13`，versionCode：`1000018`。
 - Signed HAP size: `45,429,679` bytes。
 - Signed HAP SHA256: `638919DD459DFCD4343845C19B347C9FE93359DC2C70C84D01091B2B57C36914`。
-- 无线目标 `192.168.11.100:36169` 安装成功，`aa start -a EntryAbility -b com.open.rundesk` 启动成功，设备 bundle dump 确认 `0.6.13/1000018` 已安装。
+- 无线目标 `192.168.11.102:36169` 安装成功，`aa start -a EntryAbility -b com.open.rundesk` 启动成功，设备 bundle dump 确认 `0.6.13/1000018` 已安装。
 - 本轮自动抓日志期间未捕获到新的连接动作；仍需在设备上实际点一次连接，确认第一帧后不再出现假的 `session-closed`。
 
 ### 2026-06-06 20:12 核心页状态显示修正
@@ -225,7 +252,7 @@
   - Native core manifest 仍为：size `135,668,882` bytes，mtime `2026-06-06 20:02`，FNV-1a `1f19e29a`，SHA256 `C75BF0D5F17F0812A76DEDD8FB3634462F4BDA655FDCC50CDB582AB8C3073226`。
   - Signed HAP size: `45,428,257` bytes。
   - Signed HAP SHA256: `D077245989BB3C1A3EAF5271DFB517DE0BFD4BCCE684EF4E878668FF3CC784A7`。
-  - 无线目标 `192.168.11.100:36169` 安装成功，设备 bundle dump 确认 `0.6.14/1000019`。
+  - 无线目标 `192.168.11.102:36169` 安装成功，设备 bundle dump 确认 `0.6.14/1000019`。
   - `aa start` 运行时设备处于锁屏状态，返回 `Error Code:10106102`；核心页最终显示需解锁后再确认。
 
 ## 2026-06-06 07:47 连接入口与远端断开重连对话修复
@@ -256,7 +283,7 @@
 - 签名 HAP：`%VSCODE_ROOT%\99_Temp\harmonyos_build\11_Rustdesk_harmonyos\entry\build\default\outputs\default\entry-default-signed.hap`。
 - 签名 HAP 大小：`45,420,552` bytes。
 - 签名 HAP SHA256：`593D9C459246E0C51B690C7A5266AAAB0C6BEEF07ADBCB4F506D2833E460CD8C`。
-- 无线目标 `192.168.11.100:36169` 安装成功，`aa start -a EntryAbility -b com.open.rundesk` 启动成功。
+- 无线目标 `192.168.11.102:36169` 安装成功，`aa start -a EntryAbility -b com.open.rundesk` 启动成功。
 - 实机日志确认连接入口已经进入远控页：`connectToPeer START` -> `Native connect returned SUCCESS` -> `RemoteControl` 初始化 -> `connection-type`。
 - 实机日志确认远端断开已被新逻辑接管：`session-closed detail=Remote session closed` 后出现 `[RemoteControl] terminal session event kind=session-closed detail=Remote session closed`。
 
@@ -286,7 +313,7 @@
 - BuildInfo 编译时间：`2026-06-06 07:30`。
 - App 显示版本：`0.6.10`，versionCode：`1000015`。
 - 签名 HAP：`%VSCODE_ROOT%\99_Temp\harmonyos_build\11_Rustdesk_harmonyos\entry\build\default\outputs\default\entry-default-signed.hap`。
-- 无线目标 `192.168.11.100:36169` 安装成功，`aa start -a EntryAbility -b com.open.rundesk` 启动成功。
+- 无线目标 `192.168.11.102:36169` 安装成功，`aa start -a EntryAbility -b com.open.rundesk` 启动成功。
 - 仍需在设备上实际发起一次远程连接，确认画面持续刷新和首帧后重试弹窗行为。
 
 ## 2026-06-06 01:22 画面卡住不刷新 + 质量菜单 + 帧率优化
@@ -344,7 +371,7 @@
 
 - HAP 通过 `node scripts/run_hvigor_with_sdk_patch.js assembleHap` 重建成功。
 - BuildInfo 编译时间：`2026-06-03 07:51`。
-- 无线目标 `192.168.11.100:36169` 安装成功。
+- 无线目标 `192.168.11.102:36169` 安装成功。
 - `aa start -a EntryAbility -b com.open.rundesk` 启动成功。
 
 ### 验证结果
@@ -813,7 +840,7 @@
 ## 2026-06-13 core-64 phone validation and VP9 decode fix
 
 - Online core run `27449330041` produced `core-64`; phone install with that core started normally and reported `coreReady=true`, `incomingReady=false`.
-- Wireless target `192.168.11.100:36169` stayed online, `com.open.rundesk` process remained alive, and no current-process native fatal crash was found.
+- Wireless target `192.168.11.102:36169` stayed online, `com.open.rundesk` process remained alive, and no current-process native fatal crash was found.
 - The outgoing session to Windows peer `1283267036` reached `session-connected` and received `peer-info`.
 - The stream negotiated `codec_format=VP9`, but there were still no `video-frame` events. The phone repeatedly logged `pullLatestVideoFrame null connected=true hasFrame=false lastFrameId=0`.
 - Root cause moved from incoming false-ready to outgoing decode: `codec_ohos.rs` advertised VP9 support but returned `video decoding not fully supported on ohos` from `handle_video_frame()`.
@@ -825,7 +852,7 @@
 - Local follow-up validation: empty `VCPKG_INSTALLED_ROOT` rebuilt `libvpx.a` (`3,302,168` bytes) and `libyuv.a` (`683,472` bytes); standard cached build then completed successfully with local core size `128,881,292` bytes and SHA256 `38CBFA11379C53622AEDDB9DE5D14087723986F3555A62E8FADEF9C38D18FD32`.
 - Online run `27452113153` for commit `94e64bc` still failed at the same libvpx C++ files. Artifact `7605933947` (`build-debug-logs`) contained only `build_debug_20260613_011822.log`; it confirmed `vp9/ratectrl_rtc.h` and `vp8_ratectrl_rtc.h` still failed on `<cstdint>`, and the artifact did not include cargo logs or the generated command script because the failure happened before Cargo.
 - Final script fix: resolve the actual SDK libc++ directory by checking for `cstdint`, print that path in the debug log, pass the flags through libvpx `--extra-cxxflags`, and keep `-isystem <msys-path>` as two argv entries. A temporary attempt with `-isystem/msys/path` reproduced the same missing-header failure locally because Windows `clang++.exe` does not receive MSYS path conversion for a path glued to the option.
-- Local cold validation after the final fix used `L:\Visual_Studio_Code\99_Temp\rustdesk_harmonyos_extra_cxx_validate`: `libvpx.a` (`3,302,304` bytes), `libyuv.a` (`683,472` bytes), and full Cargo build completed successfully. Produced local core size `129,593,638` bytes, SHA256 `2322E55089629C7CB9FFD426481220BDD43AB3C3DA46F37D85AD0A85DD5ADDFB`.
+- Historical local cold validation after the final fix used `L:\Visual_Studio_Code\99_Temp\rustdesk_harmonyos_extra_cxx_validate`: `libvpx.a` (`3,302,304` bytes), `libyuv.a` (`683,472` bytes), and full Cargo build completed successfully. Current work must use `%VSCODE_ROOT%\99_Temp` / `F:\Visual_Studio_Code\99_Temp` instead of recreating the old L: path. Produced local core size `129,593,638` bytes, SHA256 `2322E55089629C7CB9FFD426481220BDD43AB3C3DA46F37D85AD0A85DD5ADDFB`.
 - Online run `27457899059` for commit `ecb8a63` failed earlier in script validation: the secret-provided SDK zip had no `native/llvm/include/libcxx-ohos/include/c++/v1/cstdint` and no `native/llvm/include/c++/v1/cstdint`. A temporary MSYS2 libc++ fallback was tried next.
 - Online run `27458205351` for commit `60e36f5` proved the package install step succeeded, but the build script still inspected a preinstalled `C:\msys64` instead of the action-managed setup-msys2 root. Fixing the root discovery exposed the next issue.
 - Online run `27458902852` for commit `291646d` selected the action-managed MSYS2 libc++ include root, but those headers were incompatible with the OHOS SDK clang (`Libc++ only supports Clang 20 and later`, followed by builtin/type-trait failures). Do not use MSYS2 libc++ as the OHOS clang fallback.
@@ -840,3 +867,13 @@
 - Incoming/controlled-side sharing was still able to report `incomingReady=true` even though Harmony screen capture and the desktop server thread were not wired.
 - Fixed `main_start_service(true)` to return `incomingReady=false` plus a clear `lastError/detailMessage` while the real incoming video pipeline is missing.
 - The App side now rolls back `serviceEnabled` and `allowRemoteControl` when `ScreenCaptureService.startCapture()` fails, instead of requesting native incoming and letting remote clients wait forever for video.
+
+## 2026-06-20 stale outgoing session callback investigation
+
+- VM sequence before the fix: close an existing session, begin a password request, reach `session-connected`, then receive an older thread's `Reset by the peer` in the new global state.
+- Root cause: `ACTIVE_SESSION` replacement does not synchronously stop the old Rust I/O thread; its cloned `HarmonyHandler` remained able to call global state/event/frame helpers.
+- Added `ACTIVE_SESSION_GENERATION`; both start and close advance it. Peer info, connected, close-success, quality, connection type, fingerprint, RGBA, msgbox and cancel callbacks now ignore stale generations.
+- `session_start()` clears queued events and upstream peer password before initializing the new session.
+- After rebuilding both targets and installing the dual-architecture HAP, repeated close/connect/password cycles no longer received stale reset events.
+- Password submission on the active handshake produced `login -> peer-info -> session-connected -> connection-ready` for both remember false and true.
+- Parallel build validation passed for arm64 (`130,756,888`, SHA256 `1C7B47D058525C21E5EF53F61CD68CD99C9CD1C07FEA04F00FCE815979EAC4D6`) and x86_64 (`129,523,566`, SHA256 `67C4E0E726E236073826D85FA704E42889AF8BAC665BC58C6A88ED7333797B04`).
