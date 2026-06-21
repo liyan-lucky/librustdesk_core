@@ -3,6 +3,7 @@
 > 目标：在 Ubuntu 上为 `aarch64-unknown-linux-ohos` 交叉编译 `librustdesk_harmony_bridge.a`，
 
 > 2026-06-21 23:23：本文继续作为 Linux 复现指南；当前发布候选的精确双架构大小/哈希和线上验证要求以 `CORE.md` 为准。所有 target、SDK 解压、下载和日志必须写入 `%VSCODE_ROOT%\99_Temp\librustdesk_core` 的明确子目录。
+> 2026-06-22：当前线上权威资产为 `core-34`（commit `a7f7795`），其精确双架构哈希已写入 `CORE.md`；最终 HAP 已在 arm64 真机与 x86_64 虚拟机复验。本指南用于重建，不得以重建产物静默覆盖冻结资产。
 > 使其包含新增的 `rustdesk_bridge_get_peer_option` 和 `rustdesk_bridge_get_peer_info` 导出符号。
 
 ---

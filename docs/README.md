@@ -2,7 +2,7 @@
 
 > 核心项目文档。所有核心相关的架构、编译、桥接函数、调试文档均在此维护。
 
-> 2026-06-21 23:23：本地双架构集成、固定 HAP 100 轮审计和真机冷启动已通过。当前只剩清理/备份、双仓库发布与线上资产下载复验。先读 `CORE.md`、`CONNECTION_DEBUG_LOG.md`、`WORKSPACE_PATHS.md`，再读 App `docs/AGENT_HANDOFF.md` 的最新摘要。
+> 2026-06-22 00:30：本地双架构集成、100 轮最终审计、精准清理/备份、双仓库发布、线上资产下载复验以及线上 HAP 的 arm64 真机/x86_64 虚拟机冷启动均已完成。当前权威 Core 为 `a7f7795` / run `27920089950` / `core-34`。先读 `CORE.md`、`CONNECTION_DEBUG_LOG.md`、`WORKSPACE_PATHS.md`，再读 App `docs/AGENT_HANDOFF.md` 的最新摘要。
 
 > 2026-06-21 路径规范：Core 构建、测试、日志、备份统一写入 `%VSCODE_ROOT%\99_Temp`（当前 `F:\Visual_Studio_Code\99_Temp`），详见 `docs/WORKSPACE_PATHS.md`。不要使用盘符根 `F:\99_Temp`、工作区根 `_tmp_*` 或仓库内临时目录作为长期输出。16:26 二次清理后，Core 仓库内 target/log/cache 已删除，当前 ignored 保留项只应是 `entry/`、`rdev-fork/`、`rustdesk-master/src/version.rs`。
 

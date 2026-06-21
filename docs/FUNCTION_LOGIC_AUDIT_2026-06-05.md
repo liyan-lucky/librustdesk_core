@@ -4,6 +4,8 @@
 
 > 历史审查说明（2026-06-21 23:23）：本文保留 2026-06-05 当时结论；当前双架构 Core、真机和固定 HAP 结果以 `CORE.md`、`CONNECTION_DEBUG_LOG.md` 和 App `docs/AGENT_HANDOFF.md` 最新摘要为准，旧未实现判断不得直接用于当前发布结论。
 
+> 最终状态补记（2026-06-22）：Core `a7f7795` / `core-34` 与最终线上 HAP 已完成双架构包内核验，HAP 已在 arm64 真机和 x86_64 虚拟机冷启动；最终审计 15400 PASS / 0 FAIL / 100 预期 SKIP，连接链 84/84。
+
 ## 审查范围
 
 - 已读取并同步理解：`docs/README.md`、`docs/CORE.md`、`docs/PROGRESS.md`、`docs/FILES.md`、`docs/DESIGN.md`、`docs/UI.md`、`docs/ISSUES.md`、`docs/BUILD_ARCHIVE.md`、`docs/GIT_PUBLISH.md`、`docs/SESSION3_SUMMARY.md`、`docs/UBUNTU_CROSS_COMPILE_GUIDE.md`、`scripts/README.md`、`CHANGELOG.md`。

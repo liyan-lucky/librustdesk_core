@@ -2,9 +2,15 @@
 
 > 本文记录每一轮连接和核心调试过程。当前结论以最新时间段为准，历史段落保留排查脉络。
 
+## 2026-06-22 00:30 online release and x86_64 emulator closure
+
+Core `a7f7795` / run `27920089950` / `core-34` was downloaded and verified: arm64 `133495306 / 90A28361...`, x86_64 `131336988 / E587465E...`, both valid archives with required sharing/file/terminal/codec exports. Final App run `27920708116` produced signed HAP SHA256 `3D2711AF46FFF6C999362431FFDC7855A485BBBC5BBC1ACE629FA885F8A4E35C`; its CoreBuildInfo contains the exact online sizes and hashes.
+
+The same online HAP passed on the arm64 phone (`updateTime=1782084275314`, PID `45951`) and the online x86_64 emulator `127.0.0.1:5555` (`0.33.6 / 1000182`, `updateTime=1782084584518`, PID `694`). Emulator cold-start hilog showed 413 NAPI functions, runtime initialization, LAN discovery and repeated online polling with `coreReady=true`; no fatal/panic/signal belonged to the app PID. Raw hilog and runtime credentials were not persisted. Final audit: 15400 PASS / 0 FAIL / 100 expected SKIP; connection chain 84/84.
+
 ## 2026-06-21 23:48 final integrated device evidence
 
-Local same-source arm64 `E4614B...` and x86_64 `DB0283...` Core builds were embedded in App HAP SHA256 `1D5C7395753D4E8F143FA051E0E931CCFB6C48FFEDA03A8DF91282DD007EC8D2`, with both sizes/hashes embedded in CoreBuildInfo. The exact HAP was installed on `192.168.11.102:36169` with `updateTime=1782082072534`; forced cold-start PID `29233` reported NAPI 413 functions, `coreReady=true` and normal LAN/online query results, with no selected fatal/panic/signal. The fixed package passed connection-chain 83/83 and the 100-round full audit with zero failures. Huawei controlled-side input remains shelved and is not a release blocker.
+Local same-source arm64 `E4614B...` and x86_64 `DB0283...` Core builds were embedded in App HAP SHA256 `1D5C7395753D4E8F143FA051E0E931CCFB6C48FFEDA03A8DF91282DD007EC8D2`, with both sizes/hashes embedded in CoreBuildInfo. The exact HAP was installed on `192.168.11.102:36169` with `updateTime=1782082072534`; forced cold-start PID `29233` reported NAPI 413 functions, `coreReady=true` and normal LAN/online query results, with no selected fatal/panic/signal. The final frozen package audit is connection-chain 84/84 and 15400 PASS / 0 FAIL / 100 expected SKIP across 100 rounds. Huawei controlled-side input remains shelved and is not a release blocker.
 
 ## 2026-06-21 latest local dual-arch core and phone share
 

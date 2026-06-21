@@ -4,6 +4,8 @@
 
 > 2026-06-21 23:23 当前映射已集成到 arm64/x86_64 候选库并进入固定 HAP；当前哈希和验证证据以 `CORE.md` 为准。华为被控输入/accessibility 不再是活动实现路径，仅保留 App 侧返回 `201` 的链接兼容 stub。
 
+> 2026-06-22 最终映射状态：本映射对应 Core commit `a7f7795`，线上 `core-34` 两架构资产和最终 HAP CoreBuildInfo 已逐项核对；HAP 在 arm64 真机及 x86_64 虚拟机加载 NAPI 413 functions 并进入 `coreReady=true`。
+
 ## 代码分类
 
 ### A. 已移入 `harmony_bridge/` 目录的 OHOS 替代文件

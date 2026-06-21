@@ -2,6 +2,12 @@
 
 > 本文档记录 HarmonyOS 版 RustDesk 的核心结构、当前可用核心状态、重新编译路径和验证清单。目标是：即使清理了旧备份和生成产物，也能按本文重新编译出当前可用核心。
 
+## 2026-06-22 线上最终基线
+
+Core commit `a7f77950d108f57b7f871eddf2c360db114d1c6d`、Windows run `27920089950`、Release/tag `core-34` 已发布并复验。arm64 asset 为 `133495306` bytes / SHA256 `90A28361F8A7801E66B0854334490F6B340BEA26C95E3BC4C666D6C665078337`；x86_64 asset 为 `131336988` bytes / SHA256 `E587465E245DDA662A30110FC3FDEA139A2962295A4D73DCAAEEC9384FF18CE4`。两份 archive 均通过 `llvm-ar`，并包含共享画面、文件传输、终端和编码切换关键导出符号。
+
+App 最终 run `27920708116` / tag `OpenRustdesk-Build-v0.33.6` 的 signed HAP SHA256 为 `3D2711AF46FFF6C999362431FFDC7855A485BBBC5BBC1ACE629FA885F8A4E35C`，包内双架构 CoreBuildInfo 与上述线上资产精确一致。该 HAP 已在 arm64 真机（`updateTime=1782084275314`）和 `127.0.0.1:5555` x86_64 虚拟机（`updateTime=1782084584518`、PID `694`）安装/冷启动；两端均加载 NAPI 413 functions 并进入 `coreReady=true`，应用进程未见 fatal/panic/signal。华为被控输入继续按用户决定搁置。
+
 ## 2026-06-21 23:48 最终集成基线
 
 arm64：`131091732` bytes，SHA256 `E4614BAE4EDB54F2C0A2CFECE96A2E99D558B6900693B2B3A9B08B8F3DCD5D5D`，FNV `9cbd45a1`，编译时间 `2026-06-21 14:58`。x86_64：`130090572` bytes，SHA256 `DB0283F44EA5E5D09A23D1756929B171F28FF2A602D595941902A18ECE5F17DD`，FNV `38bf9990`，编译时间 `2026-06-21 14:48`。两者为当日本地同源码基线并已进入 App HAP `1D5C7395753D4E8F143FA051E0E931CCFB6C48FFEDA03A8DF91282DD007EC8D2`，双架构元数据已写入 CoreBuildInfo，签名、双 ABI、两架构依赖、固定哈希 100 轮审计和真机冷启动通过。线上 Release 必须下载后逐架构核对大小、SHA256 和导出符号，不能根据标签或版本号推定。

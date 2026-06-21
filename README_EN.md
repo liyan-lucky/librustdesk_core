@@ -4,6 +4,8 @@ RustDesk HarmonyOS native core static library builder. Builds `librustdesk_core.
 
 > 2026-06-21 23:38 integration candidate: arm64 archive `131,091,732` bytes, SHA256 `E4614BAE4EDB54F2C0A2CFECE96A2E99D558B6900693B2B3A9B08B8F3DCD5D5D`; x86_64 archive `130,090,572` bytes, SHA256 `DB0283F44EA5E5D09A23D1756929B171F28FF2A602D595941902A18ECE5F17DD`. Both are local 2026-06-21 builds from the same source baseline, embedded in the final App HAP and verified by the package audit, 100-round audit and device cold start. Huawei controlled-side input injection is intentionally shelved as unsupported.
 
+> 2026-06-22 online closure: commit `a7f77950d108f57b7f871eddf2c360db114d1c6d`, Windows run `27920089950`, Release/tag `core-34`. The arm64 asset is `133,495,306` bytes / SHA256 `90A28361F8A7801E66B0854334490F6B340BEA26C95E3BC4C666D6C665078337`; the x86_64 asset is `131,336,988` bytes / SHA256 `E587465E245DDA662A30110FC3FDEA139A2962295A4D73DCAAEEC9384FF18CE4`. Both archives, required exports, and the final online HAP's dual-architecture CoreBuildInfo were verified; that HAP cold-started on both an arm64 phone and an x86_64 emulator.
+
 [中文](README.md)
 
 ## Architecture
