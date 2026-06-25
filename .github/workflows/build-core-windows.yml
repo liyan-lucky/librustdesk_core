@@ -1,4 +1,4 @@
-name: 构建 librustdesk_core.a（Windows）
+name: Build librustdesk_core.a (Windows)
 
 on:
   push:
@@ -12,7 +12,7 @@ permissions:
 
 jobs:
   build:
-    name: Windows 环境构建核心 (${{ matrix.target }})
+    name: Build core on Windows (${{ matrix.target }})
     runs-on: windows-2022
     timeout-minutes: 120
 
@@ -42,15 +42,15 @@ jobs:
       RELEASE_ARTIFACT_MAX_BYTES: "250000000"
 
     steps:
-      - name: 检出代码
+      - name: Checkout
         uses: actions/checkout@v4
 
-      - name: 安装 Rust 工具链
+      - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@1.88.0
         with:
           targets: aarch64-unknown-linux-ohos,x86_64-unknown-linux-ohos
 
-      - name: 安装 MSYS2
+      - name: Install MSYS2
         uses: msys2/setup-msys2@v2
         with:
           install: >-
@@ -62,14 +62,14 @@ jobs:
             libtool
             pkgconf
 
-      - name: 准备构建目录
+      - name: Prepare build directories
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force -Path "$env:RUSTDESK_HARMONY_BUILD_DIR" | Out-Null
           New-Item -ItemType Directory -Force -Path "$env:VCPKG_ROOT" | Out-Null
           New-Item -ItemType Directory -Force -Path "$env:VCPKG_INSTALLED_ROOT" | Out-Null
 
-      - name: 下载 OpenHarmony SDK
+      - name: Download OpenHarmony SDK
         shell: pwsh
         env:
           OHOS_SDK_ZIP_URL: ${{ secrets.OHOS_SDK_ZIP_URL }}
@@ -114,7 +114,7 @@ jobs:
           Write-Host "Native dir: $nativeDir"
           Get-ChildItem "$nativeDir" | Select-Object Name
 
-      - name: 缓存 Cargo
+      - name: Cache Cargo dependencies
         uses: actions/cache@v4
         with:
           path: |
@@ -125,7 +125,7 @@ jobs:
           restore-keys: |
             windows-ohos-cargo-${{ matrix.target }}-
 
-      - name: 准备 libsodium-sys 源码
+      - name: Prepare libsodium-sys source
         shell: pwsh
         run: |
           $registrySrc = Join-Path $env:CARGO_HOME "registry\src\manual"
@@ -138,7 +138,7 @@ jobs:
             tar -xzf $crateFile -C $registrySrc
           }
 
-      - name: 编译 libopus（OHOS 交叉编译）
+      - name: Build libopus for OHOS
         shell: pwsh
         run: |
           $opusVersion = "1.5.2"
@@ -224,7 +224,7 @@ jobs:
           Write-Host "libopus prepared:"
           Get-Item $header, $libA | Format-List FullName,Length
 
-      - name: 构建 librustdesk_core.a
+      - name: Build librustdesk_core.a
         shell: pwsh
         run: |
           Write-Host "=== Environment ==="
@@ -257,7 +257,7 @@ jobs:
           $releaseFile = if ($env:TARGET_TRIPLE -eq "aarch64-unknown-linux-ohos") { "librustdesk_core.a" } else { "librustdesk_core_x86_64.a" }
           Copy-Item -LiteralPath $builtLib -Destination ".\$releaseFile" -Force
 
-      - name: 上传调试日志
+      - name: Upload debug logs
         if: always()
         uses: actions/upload-artifact@v4
         with:
@@ -272,7 +272,7 @@ jobs:
             _build/opus-*-build/CMakeFiles/CMakeOutput.log
           if-no-files-found: ignore
 
-      - name: 验证最终产物
+      - name: Validate final artifact
         shell: pwsh
         run: |
           $releaseFile = if ($env:TARGET_TRIPLE -eq "aarch64-unknown-linux-ohos") { "librustdesk_core.a" } else { "librustdesk_core_x86_64.a" }
@@ -292,14 +292,14 @@ jobs:
             throw "Unexpected $releaseFile size: $($artifactItem.Length) bytes. Expected release artifact between $minBytes and $maxBytes bytes; check Cargo profile before publishing."
           }
 
-      - name: 上传 Actions 产物
+      - name: Upload Actions artifact
         uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.artifact_name }}
           path: ${{ matrix.release_file }}
           if-no-files-found: error
 
-      - name: 检查发布文件
+      - name: Check release file
         shell: pwsh
         run: |
           $releaseFile = if ($env:TARGET_TRIPLE -eq "aarch64-unknown-linux-ohos") { "librustdesk_core.a" } else { "librustdesk_core_x86_64.a" }
@@ -309,25 +309,25 @@ jobs:
           Get-FileHash ".\$releaseFile" -Algorithm SHA256
 
   release:
-    name: 发布双架构核心
+    name: Publish dual-architecture core
     needs: build
     runs-on: ubuntu-latest
     if: needs.build.result == 'success'
 
     steps:
-      - name: 下载 arm64 产物
+      - name: Download arm64 artifact
         uses: actions/download-artifact@v4
         with:
           name: librustdesk_core
           path: ./release-assets
 
-      - name: 下载 x86_64 产物
+      - name: Download x86_64 artifact
         uses: actions/download-artifact@v4
         with:
           name: librustdesk_core_x86_64
           path: ./release-assets
 
-      - name: 检查产物
+      - name: Validate release assets
         run: |
           set -euo pipefail
           ls -la ./release-assets/
@@ -348,25 +348,25 @@ jobs:
             sha256sum "$f"
           done
 
-      - name: 创建 GitHub Release
+      - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: core-${{ github.run_number }}
-          name: "librustdesk_core 构建 ${{ github.run_number }}"
+          name: "librustdesk_core Build ${{ github.run_number }}"
           body: |
-            中文更新说明：
+            Release notes:
 
-            Windows 环境在线构建双架构 librustdesk_core.a。
+            Windows online dual-architecture build for librustdesk_core.a.
 
-            构建环境：windows-2022
-            Rust 工具链：1.88.0
-            目标平台：aarch64-unknown-linux-ohos + x86_64-unknown-linux-ohos
-            构建配置：Cargo release profile
+            Build environment: windows-2022
+            Rust toolchain: 1.88.0
+            Target platforms: aarch64-unknown-linux-ohos + x86_64-unknown-linux-ohos
+            Build profile: Cargo release
 
-            线上产物：
-            - 标签：core-${{ github.run_number }}
-              - Asset：librustdesk_core.a（arm64-v8a，真机调试）
-              - Asset：librustdesk_core_x86_64.a（x86_64，虚拟设备调试）
+            Artifacts:
+            - Tag: core-${{ github.run_number }}
+              - Asset: librustdesk_core.a (arm64-v8a, real-device debugging)
+              - Asset: librustdesk_core_x86_64.a (x86_64, virtual-device debugging)
           files: ./release-assets/*
           fail_on_unmatched_files: true
           overwrite_files: true
