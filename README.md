@@ -6,6 +6,8 @@ RustDesk HarmonyOS 原生核心静态库构建器。从 RustDesk 1.4.7 上游源
 
 > 2026-06-22 线上收口：commit `a7f77950d108f57b7f871eddf2c360db114d1c6d`、Windows run `27920089950`、Release/tag `core-34`。arm64 asset `133,495,306` bytes / SHA256 `90A28361F8A7801E66B0854334490F6B340BEA26C95E3BC4C666D6C665078337`；x86_64 asset `131,336,988` bytes / SHA256 `E587465E245DDA662A30110FC3FDEA139A2962295A4D73DCAAEEC9384FF18CE4`。两份 archive、关键导出符号及最终线上 HAP 的双架构 CoreBuildInfo 均已复验；同一 HAP 已在 arm64 真机和 x86_64 虚拟机冷启动通过。
 
+> 2026-06-26 状态校准：HarmonyOS 作为被控端的画面传输已由真机实测跑通；被控端远程输入/操控因当前鸿蒙平台能力限制不作为支持项，相关输入注入符号仅保留兼容和诊断边界；文件传输、音频、语音、录制、截图、完整菜单状态等仍需逐项端到端验证。官方核心对齐清单见 `docs/OFFICIAL_CORE_GAP.md`。
+
 [English](README_EN.md)
 
 ## 架构
@@ -145,5 +147,7 @@ OHOS 对所有 C FFI 函数使用 `rustdesk_bridge_*` 前缀。部分名称与�
 - 出站远控会话使用真实 RustDesk 会话路径，通过 `on_rgba -> publish_real_video_frame -> video-frame` 发布视频。
 - OHOS 出站观看端视频解码使用 `libvpx` 软解 VP8/VP9 加 `libyuv` YUV 转 RGBA。`codec_ohos.rs` 不得声明 VP9 支持，除非 `handle_video_frame()` 能解码帧并调用 `GoogleImage::to()`。
 - 保持 libvpx VP8/VP9 编码器启用，除非重新设计 `scrap` 绑定。`scrap/src/bindings/vpx_ffi.h` 包含 `vp8cx.h` 和 `vpx_encoder.h`，`common/vpxcodec.rs` 引用编码器 API。仅跳过 `libvpxrc.a`；不要禁用 `scrap` 使用的公共 C API 对应的编码器。
-- Harmony 入站/被控端屏幕共享尚不可用，因为 desktop server 线程和 Harmony 屏幕采集管线尚未在该目标上接通。
-- `main_start_service(true)` 必须在管线缺失时返回 `incomingReady=false` 并给出明确错误。不能仅因为 rendezvous/options 已刷新就标记 incoming ready；那会让远端客户端永远等待一个不存在的视频流。
+- HarmonyOS 入站/被控端画面传输已由真机实测跑通：手机端采集画面进入核心并可在 Windows 端看到真实持续刷新画面。
+- HarmonyOS 入站/被控端远程输入/操控当前按平台不支持处理：不要把输入注入作为发布阻塞项，也不要在 UI 或状态中宣称可控；相关符号仅用于兼容、诊断和明确失败边界。
+- `main_start_service(true)` 的状态必须区分画面链路和输入链路：画面链路可 ready 时允许上报共享可用，但输入能力必须单独标记为 unsupported/false，不能因为 rendezvous/options 刷新或 native buffer 有帧就误报完整被控能力。
+- 文件传输、音频、语音、录制、截图、远程光标、完整菜单状态等非画面能力仍按“未完成端到端验证”处理，补齐顺序和验收标准见 `docs/OFFICIAL_CORE_GAP.md`。
