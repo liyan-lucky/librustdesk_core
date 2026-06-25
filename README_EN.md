@@ -6,6 +6,8 @@ RustDesk HarmonyOS native core static library builder. Builds `librustdesk_core.
 
 > 2026-06-22 online closure: commit `a7f77950d108f57b7f871eddf2c360db114d1c6d`, Windows run `27920089950`, Release/tag `core-34`. The arm64 asset is `133,495,306` bytes / SHA256 `90A28361F8A7801E66B0854334490F6B340BEA26C95E3BC4C666D6C665078337`; the x86_64 asset is `131,336,988` bytes / SHA256 `E587465E245DDA662A30110FC3FDEA139A2962295A4D73DCAAEEC9384FF18CE4`. Both archives, required exports, and the final online HAP's dual-architecture CoreBuildInfo were verified; that HAP cold-started on both an arm64 phone and an x86_64 emulator.
 
+> 2026-06-26 status alignment: HarmonyOS controlled-side video transfer has been confirmed on a real device. Remote input/control is treated as unsupported on the current HarmonyOS platform and the input-injection symbols are retained only for compatibility and diagnostics. File transfer, audio, voice call, recording, screenshot, full menu state and related non-video capabilities still require end-to-end validation. See `docs/OFFICIAL_CORE_GAP.md` for the official-core alignment audit.
+
 [中文](README.md)
 
 ## Architecture
@@ -145,5 +147,7 @@ See `scripts/rename_mapping.js` for complete mapping.
 - Outgoing remote-control sessions use the real RustDesk session path and publish video through `on_rgba -> publish_real_video_frame -> video-frame`.
 - OHOS outgoing viewer video decode uses software VP8/VP9 through `libvpx` plus YUV-to-RGBA conversion through `libyuv`. `codec_ohos.rs` must not advertise VP9 support unless `handle_video_frame()` can decode frames and call `GoogleImage::to()`.
 - Keep libvpx VP8/VP9 encoders enabled unless `scrap` bindings are redesigned. `scrap/src/bindings/vpx_ffi.h` includes `vp8cx.h` and `vpx_encoder.h`, and `common/vpxcodec.rs` references encoder APIs even when the current OHOS user flow is viewer-side decode. Skip only `libvpxrc.a`; do not disable the encoders that produce the public C API used by `scrap`.
-- Harmony incoming/controlled-side screen sharing is not available yet because the desktop server thread and Harmony screen-capture pipeline are not wired on this target.
-- `main_start_service(true)` must return `incomingReady=false` with a clear error while that pipeline is missing. Do not mark incoming ready just because rendezvous/options were refreshed; that makes remote clients wait forever for a video stream that cannot exist.
+- HarmonyOS incoming/controlled-side video transfer has been confirmed on a real device: phone-side capture reaches the core and Windows can see a real, continuously refreshed screen.
+- HarmonyOS incoming/controlled-side remote input/control is treated as platform-unsupported for now. Do not present it as supported in UI/state; related symbols are compatibility, diagnostics and explicit-failure boundaries only.
+- `main_start_service(true)` status must distinguish video readiness from input readiness. Video can be reported ready once the actual serving pipeline is ready, but input capability must remain separately marked unsupported/false. Do not report full controlled-side capability just because rendezvous/options refreshed or native buffers exist.
+- File transfer, audio, voice call, recording, screenshot, remote cursor and full menu-state behavior remain end-to-end validation items. See `docs/OFFICIAL_CORE_GAP.md` for priorities and acceptance criteria.
