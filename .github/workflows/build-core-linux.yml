@@ -45,7 +45,10 @@ jobs:
             libtool \
             pkg-config \
             perl \
-            python3
+            python3 \
+            curl \
+            git \
+            unzip
 
       - name: 准备构建目录
         run: |
@@ -72,7 +75,9 @@ jobs:
 
           clang=$(find "$sdk_root" -name clang -type f | grep -E 'native/llvm/bin/clang$' | head -1)
           if [ -z "$clang" ]; then
-            echo "错误：未找到 clang"
+            echo "错误：未找到 native/llvm/bin/clang"
+            echo "SDK 解压目录如下："
+            find "$sdk_root" -maxdepth 5 -type d | sort | head -200
             exit 1
           fi
 
@@ -80,6 +85,16 @@ jobs:
           llvm_dir=$(dirname "$llvm_bin_dir")
           native_dir=$(dirname "$llvm_dir")
           sdk_native_root=$(dirname "$native_dir")
+
+          for required in \
+            "$native_dir/llvm/bin/clang++" \
+            "$native_dir/llvm/bin/llvm-ar" \
+            "$native_dir/llvm/bin/llvm-ranlib"; do
+            if [ ! -x "$required" ]; then
+              echo "错误：缺少或不可执行：$required"
+              exit 1
+            fi
+          done
 
           if [ ! -d "$native_dir/sysroot" ]; then
             echo "错误：未找到 sysroot，期望路径：$native_dir/sysroot"
@@ -97,7 +112,8 @@ jobs:
 
           echo "SDK 根目录: $sdk_native_root"
           echo "Native 目录: $native_dir"
-          ls "$native_dir"
+          ls -la "$native_dir"
+          ls -la "$native_dir/llvm/bin" | head -80
 
       - name: 缓存 Cargo 依赖
         uses: actions/cache@v4
@@ -109,6 +125,18 @@ jobs:
           key: linux-ohos-cargo-${{ hashFiles('**/Cargo.lock') }}
           restore-keys: |
             linux-ohos-cargo-
+
+      - name: 缓存 OHOS 外部静态库
+        uses: actions/cache@v4
+        with:
+          path: |
+            ${{ github.workspace }}/_build/vcpkg/installed
+            ${{ github.workspace }}/_build/downloads
+            ${{ github.workspace }}/_build/build/libsodium
+          key: linux-ohos-extlibs-${{ env.TARGET_TRIPLE }}-opus-1.5.2-vpx-1.15.2-yuv-0faf8dd0e004520a61a603a4d2996d5ecc80dc3f-libsodium-0.2.7
+          restore-keys: |
+            linux-ohos-extlibs-${{ env.TARGET_TRIPLE }}-
+            linux-ohos-extlibs-
 
       - name: 准备 libsodium-sys 源码
         run: |
@@ -127,14 +155,23 @@ jobs:
           opus_version="1.5.2"
           triplet="arm64-linux"
           opus_root="$RUSTDESK_HARMONY_BUILD_DIR/opus"
-          opus_tar="$RUNNER_TEMP/opus-$opus_version.tar.gz"
+          opus_tar="$RUSTDESK_HARMONY_BUILD_DIR/downloads/opus-$opus_version.tar.gz"
           install_root="$VCPKG_INSTALLED_ROOT/$triplet"
           include_dir="$install_root/include"
           lib_dir="$install_root/lib"
 
-          mkdir -p "$opus_root" "$include_dir" "$lib_dir"
+          if [ -f "$include_dir/opus/opus_multistream.h" ] && [ -f "$lib_dir/libopus.a" ]; then
+            echo "libopus 已存在，跳过编译"
+            exit 0
+          fi
 
-          curl -fSL -o "$opus_tar" "https://downloads.xiph.org/releases/opus/opus-$opus_version.tar.gz"
+          mkdir -p "$opus_root" "$include_dir" "$lib_dir" "$(dirname "$opus_tar")"
+
+          if [ ! -f "$opus_tar" ]; then
+            curl -fSL -o "$opus_tar" "https://downloads.xiph.org/releases/opus/opus-$opus_version.tar.gz"
+          fi
+          rm -rf "$opus_root"
+          mkdir -p "$opus_root"
           tar -xzf "$opus_tar" -C "$opus_root" --strip-components=1
 
           sdk_llvm_bin="$RUSTDESK_HARMONY_HOST_SDK/native/llvm/bin"
@@ -158,20 +195,17 @@ jobs:
           make -j$(nproc)
           make install
 
-          header="$include_dir/opus/opus_multistream.h"
-          lib_a="$lib_dir/libopus.a"
-
-          if [ ! -f "$header" ]; then
-            echo "错误：opus 头文件未找到: $header"
+          if [ ! -f "$include_dir/opus/opus_multistream.h" ]; then
+            echo "错误：opus 头文件未找到: $include_dir/opus/opus_multistream.h"
             exit 1
           fi
-          if [ ! -f "$lib_a" ]; then
-            echo "错误：libopus.a 未找到: $lib_a"
+          if [ ! -f "$lib_dir/libopus.a" ]; then
+            echo "错误：libopus.a 未找到: $lib_dir/libopus.a"
             exit 1
           fi
 
           echo "libopus 编译完成:"
-          ls -la "$header" "$lib_a"
+          ls -la "$include_dir/opus/opus_multistream.h" "$lib_dir/libopus.a"
 
       - name: 编译 libvpx（OHOS 交叉编译）
         run: |
@@ -197,6 +231,7 @@ jobs:
             exit 0
           fi
 
+          rm -rf "$source_dir"
           mkdir -p "$source_dir" "$include_dir" "$lib_dir" "$(dirname "$archive_path")"
 
           if [ ! -f "$archive_path" ]; then
@@ -208,10 +243,6 @@ jobs:
           sdk_sysroot="$RUSTDESK_HARMONY_HOST_SDK/native/sysroot"
           arch_include="$sdk_sysroot/usr/include/aarch64-linux-ohos"
           usr_include="$sdk_sysroot/usr/include"
-
-          build_dir="$RUSTDESK_HARMONY_BUILD_DIR/external-src/libvpx-$version-build"
-          rm -rf "$build_dir"
-          mkdir -p "$build_dir"
 
           cd "$source_dir"
           rm -rf build-ohos
@@ -275,6 +306,7 @@ jobs:
             exit 0
           fi
 
+          rm -rf "$source_dir"
           mkdir -p "$source_dir" "$(dirname "$archive_path")"
 
           if [ ! -f "$archive_path" ]; then
@@ -396,17 +428,34 @@ jobs:
 
           ./scripts/build_native_bridge.sh "$TARGET_TRIPLE" release
 
-          built_lib="./native_rust_core/target/$TARGET_TRIPLE/release/librustdesk_harmony_bridge.a"
-          if [ ! -f "$built_lib" ]; then
-            built_lib="./native_rust_core/target/$TARGET_TRIPLE/release/librustdesk_harmony_bridge.a"
-            if [ ! -f "$built_lib" ]; then
-              echo "错误：构建完成但未找到静态库"
-              find ./native_rust_core/target -name "*.a" -type f
-              exit 1
+          candidates="
+          $CARGO_TARGET_DIR/$TARGET_TRIPLE/release/librustdesk_harmony_bridge.a
+          $CARGO_TARGET_DIR/$TARGET_TRIPLE/release/rustdesk_harmony_bridge.a
+          $CARGO_TARGET_DIR/harmony/librustdesk_harmony_bridge.a
+          $CARGO_TARGET_DIR/harmony/rustdesk_harmony_bridge.a
+          ./native_rust_core/target/$TARGET_TRIPLE/release/librustdesk_harmony_bridge.a
+          ./native_rust_core/target/$TARGET_TRIPLE/release/rustdesk_harmony_bridge.a
+          "
+
+          built_lib=""
+          for candidate in $candidates; do
+            if [ -f "$candidate" ]; then
+              built_lib="$candidate"
+              break
             fi
+          done
+
+          if [ -z "$built_lib" ]; then
+            echo "错误：构建完成但未找到静态库"
+            echo "CARGO_TARGET_DIR=$CARGO_TARGET_DIR"
+            echo "当前找到的 .a 文件："
+            find "$CARGO_TARGET_DIR" ./native_rust_core/target -name "*.a" -type f 2>/dev/null || true
+            exit 1
           fi
 
+          echo "使用静态库: $built_lib"
           cp -f "$built_lib" "./librustdesk_core.a"
+          ls -la "./librustdesk_core.a"
 
       - name: 上传调试日志
         if: always()
