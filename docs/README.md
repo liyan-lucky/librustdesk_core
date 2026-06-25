@@ -2,7 +2,9 @@
 
 > 核心项目文档。所有核心相关的架构、编译、桥接函数、调试文档均在此维护。
 
-> 2026-06-22 00:30：本地双架构集成、100 轮最终审计、精准清理/备份、双仓库发布、线上资产下载复验以及线上 HAP 的 arm64 真机/x86_64 虚拟机冷启动均已完成。当前权威 Core 为 `a7f7795` / run `27920089950` / `core-34`。先读 `CORE.md`、`CONNECTION_DEBUG_LOG.md`、`WORKSPACE_PATHS.md`，再读 App `docs/AGENT_HANDOFF.md` 的最新摘要。
+> 2026-06-26 对齐审计：HarmonyOS 被控端画面传输已由用户真机实测跑通；被控端远程输入/操控当前按鸿蒙平台不支持处理，不再作为发布阻塞项，也不得在 UI/状态中宣称可控；文件传输、音频、语音、录制、截图、远程光标、完整菜单状态等仍按“未逐项端到端验证”处理。官方核心差距和补齐顺序见 `OFFICIAL_CORE_GAP.md`。
+
+> 2026-06-22 00:30：本地双架构集成、100 轮最终审计、精准清理/备份、双仓库发布、线上资产下载复验以及线上 HAP 的 arm64 真机/x86_64 虚拟机冷启动均已完成。当前权威 Core 为 `a7f7795` / run `27920089950` / `core-34`。先读 `CORE.md`、`OFFICIAL_CORE_GAP.md`、`CONNECTION_DEBUG_LOG.md`、`WORKSPACE_PATHS.md`，再读 App `docs/AGENT_HANDOFF.md` 的最新摘要。
 
 > 2026-06-21 路径规范：Core 构建、测试、日志、备份统一写入 `%VSCODE_ROOT%\99_Temp`（当前 `F:\Visual_Studio_Code\99_Temp`），详见 `docs/WORKSPACE_PATHS.md`。不要使用盘符根 `F:\99_Temp`、工作区根 `_tmp_*` 或仓库内临时目录作为长期输出。16:26 二次清理后，Core 仓库内 target/log/cache 已删除，当前 ignored 保留项只应是 `entry/`、`rdev-fork/`、`rustdesk-master/src/version.rs`。
 
@@ -34,11 +36,14 @@
 
 > 2026-06-15 中文说明（已发布标签 `core-81`）：共享启动不能只等 `incomingReady=true` 才启动 App 录屏，否则核心等首帧、App 等 ready 会形成死锁。本轮新增 `captureRequired` 快照字段：`main_start_service(true)` 返回 `captureRequired=true`、`incomingReady=false`，App 看到该状态后启动 native `OH_AVScreenCapture_StartScreenCapture` 并推首帧。核心 `scrap::common::ohos::Capturer` 现在从 incoming frame cache 读取最新帧，`Display::primary/all` 也返回可用 OHOS display 信息；但 desktop server/video source 未真正 ready 前仍不能把 `incomingReady` 置 true。本地核心构建已通过，产物 `128,894,588` bytes，SHA256 `2DC3B655664B756E255684D28FBA0CB3A9DEC14E6080EA4682FA26486ADF9B6D`；GitHub Actions run `27563925971` 已成功发布 `core-81`，线上 asset `131,631,706` bytes，SHA256 `64463fa57005cd5ccd99bafa9a40f18a9d605f8e90f5e199f92b38abfcdb4829`，release body 已补中文说明。11 App 使用本地同源核心构建 `0.22.6` 并完成验包、66 项审计、无线安装和干净 hilog 验证，下一步强制拉取线上 core-81 重测。
 
+> 注：`core-80/core-81` 条目是当时实现阶段的历史状态；当前状态以 2026-06-26 对齐审计为准：被控端画面已实测可传输，输入/操控按平台不支持处理，其他非画面能力仍需逐项验收。
+
 ## 文档列表
 
 | 文件 | 说明 |
 |------|------|
 | `CORE.md` | 核心架构、可复现编译、桥接函数完整说明（369个函数）、CMake链接、编译问题 |
+| `OFFICIAL_CORE_GAP.md` | RustDesk 官方核心对齐审计；列出已接通、未测、平台不支持和待补齐项 |
 | `WORKSPACE_PATHS.md` | Core 构建/测试/备份路径规范；必须与 App 仓库同名文档保持一致 |
 | `LESSONS_LEARNED.md` | 经验教训和易复发构建问题 |
 | `BUILD_ARCHIVE.md` | 历史构建、脚本、Ubuntu路径和早期会话归档 |
