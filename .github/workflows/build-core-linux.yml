@@ -1,4 +1,4 @@
-name: 构建 librustdesk_core.a（Linux）
+name: Build librustdesk_core.a (Linux)
 
 on:
   workflow_dispatch:
@@ -8,7 +8,7 @@ permissions:
 
 jobs:
   build:
-    name: Linux 环境构建核心
+    name: Build core on Linux
     runs-on: ubuntu-22.04
     timeout-minutes: 120
 
@@ -25,15 +25,15 @@ jobs:
       RELEASE_ARTIFACT_MAX_BYTES: "250000000"
 
     steps:
-      - name: 检出代码
+      - name: Checkout
         uses: actions/checkout@v4
 
-      - name: 安装 Rust 工具链
+      - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@1.88.0
         with:
           targets: aarch64-unknown-linux-ohos
 
-      - name: 安装系统依赖
+      - name: Install system dependencies
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
@@ -50,19 +50,19 @@ jobs:
             git \
             unzip
 
-      - name: 准备构建目录
+      - name: Prepare build directories
         run: |
           mkdir -p "$RUSTDESK_HARMONY_BUILD_DIR"
           mkdir -p "$VCPKG_ROOT"
           mkdir -p "$VCPKG_INSTALLED_ROOT"
 
-      - name: 下载 OpenHarmony SDK
+      - name: Download OpenHarmony SDK
         env:
           OHOS_SDK_ZIP_URL: ${{ secrets.OHOS_SDK_LINUX_ZIP_URL }}
         run: |
           if [ -z "$OHOS_SDK_ZIP_URL" ]; then
-            echo "错误：缺少仓库密钥 OHOS_SDK_LINUX_ZIP_URL"
-            echo "请上传 Linux 版 OHOS Native SDK 压缩包到 GitHub Release 或其他位置，并将 URL 设置为仓库密钥。"
+            echo "Missing repository secret: OHOS_SDK_LINUX_ZIP_URL"
+            echo "Upload a Linux OHOS Native SDK archive to GitHub Release or another location, then set the URL as this repository secret."
             exit 1
           fi
 
@@ -75,8 +75,8 @@ jobs:
 
           clang=$(find "$sdk_root" -name clang -type f | grep -E 'native/llvm/bin/clang$' | head -1)
           if [ -z "$clang" ]; then
-            echo "错误：未找到 native/llvm/bin/clang"
-            echo "SDK 解压目录如下："
+            echo "native/llvm/bin/clang was not found."
+            echo "SDK directory preview:"
             find "$sdk_root" -maxdepth 5 -type d | sort | head -200
             exit 1
           fi
@@ -91,18 +91,18 @@ jobs:
             "$native_dir/llvm/bin/llvm-ar" \
             "$native_dir/llvm/bin/llvm-ranlib"; do
             if [ ! -x "$required" ]; then
-              echo "错误：缺少或不可执行：$required"
+              echo "Missing or not executable: $required"
               exit 1
             fi
           done
 
           if [ ! -d "$native_dir/sysroot" ]; then
-            echo "错误：未找到 sysroot，期望路径：$native_dir/sysroot"
+            echo "sysroot was not found. Expected: $native_dir/sysroot"
             exit 1
           fi
 
           if [ ! -d "$native_dir/llvm/lib" ]; then
-            echo "错误：未找到 llvm/lib，期望路径：$native_dir/llvm/lib"
+            echo "llvm/lib was not found. Expected: $native_dir/llvm/lib"
             exit 1
           fi
 
@@ -110,12 +110,12 @@ jobs:
           echo "OHOS_SDK_HOME=$sdk_native_root" >> "$GITHUB_ENV"
           echo "OHOS_NDK_HOME=$sdk_native_root" >> "$GITHUB_ENV"
 
-          echo "SDK 根目录: $sdk_native_root"
-          echo "Native 目录: $native_dir"
+          echo "SDK root: $sdk_native_root"
+          echo "Native directory: $native_dir"
           ls -la "$native_dir"
           ls -la "$native_dir/llvm/bin" | head -80
 
-      - name: 缓存 Cargo 依赖
+      - name: Cache Cargo dependencies
         uses: actions/cache@v4
         with:
           path: |
@@ -126,7 +126,7 @@ jobs:
           restore-keys: |
             linux-ohos-cargo-
 
-      - name: 缓存 OHOS 外部静态库
+      - name: Cache OHOS external static libraries
         uses: actions/cache@v4
         with:
           path: |
@@ -138,7 +138,7 @@ jobs:
             linux-ohos-extlibs-${{ env.TARGET_TRIPLE }}-
             linux-ohos-extlibs-
 
-      - name: 准备 libsodium-sys 源码
+      - name: Prepare libsodium-sys source
         run: |
           registry_src="$HOME/.cargo/registry/src"
           crate_dir="$registry_src/manual/libsodium-sys-0.2.7"
@@ -150,7 +150,7 @@ jobs:
             tar -xzf "$crate_file" -C "$registry_src/manual"
           fi
 
-      - name: 编译 libopus（OHOS 交叉编译）
+      - name: Build libopus for OHOS
         run: |
           opus_version="1.5.2"
           triplet="arm64-linux"
@@ -161,7 +161,7 @@ jobs:
           lib_dir="$install_root/lib"
 
           if [ -f "$include_dir/opus/opus_multistream.h" ] && [ -f "$lib_dir/libopus.a" ]; then
-            echo "libopus 已存在，跳过编译"
+            echo "libopus already exists; skipping build."
             exit 0
           fi
 
@@ -196,18 +196,18 @@ jobs:
           make install
 
           if [ ! -f "$include_dir/opus/opus_multistream.h" ]; then
-            echo "错误：opus 头文件未找到: $include_dir/opus/opus_multistream.h"
+            echo "opus header was not found: $include_dir/opus/opus_multistream.h"
             exit 1
           fi
           if [ ! -f "$lib_dir/libopus.a" ]; then
-            echo "错误：libopus.a 未找到: $lib_dir/libopus.a"
+            echo "libopus.a was not found: $lib_dir/libopus.a"
             exit 1
           fi
 
-          echo "libopus 编译完成:"
+          echo "libopus build completed:"
           ls -la "$include_dir/opus/opus_multistream.h" "$lib_dir/libopus.a"
 
-      - name: 编译 libvpx（OHOS 交叉编译）
+      - name: Build libvpx for OHOS
         run: |
           version="1.15.2"
           triplet="arm64-linux"
@@ -227,7 +227,7 @@ jobs:
           done
 
           if $all_headers_found && [ -f "$lib_dir/libvpx.a" ]; then
-            echo "libvpx 已存在，跳过编译"
+            echo "libvpx already exists; skipping build."
             exit 0
           fi
 
@@ -288,10 +288,10 @@ jobs:
             cp -f "../vpx/$header" "$install_root/include/vpx/$header"
           done
 
-          echo "libvpx 编译完成:"
+          echo "libvpx build completed:"
           ls -la "$install_root/lib/libvpx.a"
 
-      - name: 编译 libyuv（OHOS 交叉编译）
+      - name: Build libyuv for OHOS
         run: |
           revision="0faf8dd0e004520a61a603a4d2996d5ecc80dc3f"
           triplet="arm64-linux"
@@ -302,7 +302,7 @@ jobs:
           archive_path="$RUSTDESK_HARMONY_BUILD_DIR/downloads/libyuv-$revision.tar.gz"
 
           if [ -f "$include_dir/libyuv/convert_argb.h" ] && [ -f "$lib_dir/libyuv.a" ]; then
-            echo "libyuv 已存在，跳过编译"
+            echo "libyuv already exists; skipping build."
             exit 0
           fi
 
@@ -347,7 +347,7 @@ jobs:
 
           built_lib="$build_dir/libyuv.a"
           if [ ! -f "$built_lib" ]; then
-            echo "错误：libyuv 编译完成但未生成 $built_lib"
+            echo "libyuv build completed but did not generate $built_lib"
             exit 1
           fi
 
@@ -355,10 +355,10 @@ jobs:
           mkdir -p "$include_dir/libyuv"
           cp -rf "$source_dir/include/libyuv/"* "$include_dir/libyuv/"
 
-          echo "libyuv 编译完成:"
+          echo "libyuv build completed:"
           ls -la "$lib_dir/libyuv.a"
 
-      - name: 编译 libsodium（OHOS 交叉编译）
+      - name: Build libsodium for OHOS
         run: |
           target_triple="$TARGET_TRIPLE"
           install_dir="$RUSTDESK_HARMONY_BUILD_DIR/build/libsodium/$target_triple"
@@ -366,7 +366,7 @@ jobs:
           final_lib="$lib_dir/liblibsodium.a"
 
           if [ -f "$final_lib" ]; then
-            echo "libsodium 已存在，跳过编译"
+            echo "libsodium already exists; skipping build."
             exit 0
           fi
 
@@ -375,7 +375,7 @@ jobs:
           source_dir="$crate_dir/libsodium"
 
           if [ ! -d "$source_dir" ]; then
-            echo "错误：libsodium-sys 源码未找到: $source_dir"
+            echo "libsodium-sys source was not found: $source_dir"
             exit 1
           fi
 
@@ -409,14 +409,14 @@ jobs:
           cp -f "$install_dir/lib/libsodium.a" "$install_dir/lib/liblibsodium.a"
 
           if [ ! -f "$final_lib" ]; then
-            echo "错误：libsodium 编译完成但未生成 $final_lib"
+            echo "libsodium build completed but did not generate $final_lib"
             exit 1
           fi
 
-          echo "libsodium 编译完成:"
+          echo "libsodium build completed:"
           ls -la "$final_lib"
 
-      - name: 构建 librustdesk_core.a
+      - name: Build librustdesk_core.a
         run: |
           chmod +x scripts/build_native_bridge.sh
           chmod +x scripts/_ohos-sdk-env.sh
@@ -446,18 +446,18 @@ jobs:
           done
 
           if [ -z "$built_lib" ]; then
-            echo "错误：构建完成但未找到静态库"
+            echo "Static library was not found after build."
             echo "CARGO_TARGET_DIR=$CARGO_TARGET_DIR"
-            echo "当前找到的 .a 文件："
+            echo "Current .a files:"
             find "$CARGO_TARGET_DIR" ./native_rust_core/target -name "*.a" -type f 2>/dev/null || true
             exit 1
           fi
 
-          echo "使用静态库: $built_lib"
+          echo "Using static library: $built_lib"
           cp -f "$built_lib" "./librustdesk_core.a"
           ls -la "./librustdesk_core.a"
 
-      - name: 上传调试日志
+      - name: Upload debug logs
         if: always()
         uses: actions/upload-artifact@v4
         with:
@@ -468,16 +468,16 @@ jobs:
             build_env_*.log
           if-no-files-found: ignore
 
-      - name: 验证最终产物
+      - name: Validate final artifact
         run: |
           artifact="./librustdesk_core.a"
 
           if [ ! -f "$artifact" ]; then
-            echo "错误：librustdesk_core.a 未生成"
+            echo "librustdesk_core.a was not generated."
             exit 1
           fi
 
-          echo "===== 最终产物 ====="
+          echo "===== Final artifact ====="
           ls -la "$artifact"
 
           artifact_size=$(stat -c%s "$artifact")
@@ -485,42 +485,42 @@ jobs:
           max_bytes=$RELEASE_ARTIFACT_MAX_BYTES
 
           if [ "$artifact_size" -lt "$min_bytes" ] || [ "$artifact_size" -gt "$max_bytes" ]; then
-            echo "错误：librustdesk_core.a 体积异常：$artifact_size bytes，期望范围 $min_bytes ~ $max_bytes bytes"
+            echo "Unexpected librustdesk_core.a size: $artifact_size bytes. Expected $min_bytes to $max_bytes bytes."
             exit 1
           fi
 
-      - name: 上传 Actions 产物
+      - name: Upload Actions artifact
         uses: actions/upload-artifact@v4
         with:
           name: librustdesk_core_linux
           path: librustdesk_core.a
           if-no-files-found: error
 
-      - name: 检查发布文件
+      - name: Check release file
         run: |
           ls -la ./librustdesk_core.a
           echo "SHA256:"
           sha256sum ./librustdesk_core.a
 
-      - name: 创建 GitHub Release
+      - name: Create GitHub Release
         if: success()
         uses: softprops/action-gh-release@v2
         with:
           tag_name: core-linux-${{ github.run_number }}
-          name: "librustdesk_core Linux 构建 ${{ github.run_number }}"
+          name: "librustdesk_core Linux Build ${{ github.run_number }}"
           body: |
-            中文更新说明：
+            Release notes:
 
-            Linux 环境在线构建 librustdesk_core.a。
+            Linux online build for librustdesk_core.a.
 
-            构建环境：ubuntu-22.04
-            Rust 工具链：1.88.0
-            目标平台：aarch64-unknown-linux-ohos
-            构建配置：Cargo release profile
+            Build environment: ubuntu-22.04
+            Rust toolchain: 1.88.0
+            Target platform: aarch64-unknown-linux-ohos
+            Build profile: Cargo release
 
-            线上产物：
-            - 标签：core-linux-${{ github.run_number }}
-            - Asset：librustdesk_core.a
+            Artifacts:
+            - Tag: core-linux-${{ github.run_number }}
+            - Asset: librustdesk_core.a
           files: librustdesk_core.a
           overwrite_files: true
         env:
