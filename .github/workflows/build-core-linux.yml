@@ -144,11 +144,34 @@ jobs:
           crate_dir="$registry_src/manual/libsodium-sys-0.2.7"
 
           if [ ! -d "$crate_dir" ]; then
-            mkdir -p "$registry_src/manual"
-            crate_file="$RUNNER_TEMP/libsodium-sys-0.2.7.crate"
-            curl -fSL -o "$crate_file" "https://crates.io/api/v1/crates/libsodium-sys/0.2.7/download"
-            tar -xzf "$crate_file" -C "$registry_src/manual"
+            fetch_dir="$RUNNER_TEMP/libsodium-sys-fetch"
+            rm -rf "$fetch_dir"
+            mkdir -p "$fetch_dir" "$registry_src/manual"
+
+            cat > "$fetch_dir/Cargo.toml" <<'EOF'
+          [package]
+          name = "libsodium-sys-fetch"
+          version = "0.1.0"
+          edition = "2021"
+
+          [dependencies]
+          libsodium-sys = "=0.2.7"
+          EOF
+
+            CARGO_NET_RETRY=5 cargo fetch --manifest-path "$fetch_dir/Cargo.toml"
+
+            fetched_crate=$(find "$registry_src" -mindepth 2 -maxdepth 2 -type d -name 'libsodium-sys-0.2.7' | grep -v '/manual/' | head -n 1)
+            if [ -z "$fetched_crate" ]; then
+              echo "libsodium-sys-0.2.7 was not found in Cargo registry after cargo fetch."
+              find "$registry_src" -maxdepth 3 -type d -name 'libsodium-sys*' || true
+              exit 1
+            fi
+
+            cp -a "$fetched_crate" "$crate_dir"
           fi
+
+          test -d "$crate_dir/libsodium"
+          echo "libsodium-sys source is ready: $crate_dir"
 
       - name: Build libopus for OHOS
         run: |
