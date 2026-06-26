@@ -1,0 +1,76 @@
+name: Switch Linux and Windows workflow triggers
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/switch-linux-windows-triggers.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  switch-triggers:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Switch triggers
+        run: |
+          python3 <<'PY'
+          from pathlib import Path
+
+          windows = Path('.github/workflows/build-core-windows.yml')
+          linux = Path('.github/workflows/build-core-linux.yml')
+          self_file = Path('.github/workflows/switch-linux-windows-triggers.yml')
+
+          w = windows.read_text(encoding='utf-8')
+          old_w = '''on:
+  push:
+    branches: [main]
+    paths-ignore:
+      - "**.md"
+  workflow_dispatch:
+'''
+          new_w = '''on:
+  workflow_dispatch:
+'''
+          if old_w in w:
+              w = w.replace(old_w, new_w, 1)
+          elif 'on:\n  workflow_dispatch:\n' not in w:
+              raise SystemExit('Windows workflow trigger block was not recognized')
+          windows.write_text(w, encoding='utf-8')
+
+          l = linux.read_text(encoding='utf-8')
+          old_l = '''on:
+  workflow_dispatch:
+'''
+          new_l = '''on:
+  push:
+    branches: [main]
+    paths-ignore:
+      - "**.md"
+  workflow_dispatch:
+'''
+          if old_l in l:
+              l = l.replace(old_l, new_l, 1)
+          elif 'on:\n  push:\n' not in l:
+              raise SystemExit('Linux workflow trigger block was not recognized')
+          linux.write_text(l, encoding='utf-8')
+
+          if self_file.exists():
+              self_file.unlink()
+          PY
+
+      - name: Commit changes
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git status --short
+          git add .github/workflows/build-core-windows.yml .github/workflows/build-core-linux.yml .github/workflows/switch-linux-windows-triggers.yml
+          git commit -m "switch linux and windows workflow triggers"
+          git push
