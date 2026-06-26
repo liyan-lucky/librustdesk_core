@@ -1,6 +1,10 @@
 name: Build librustdesk_core.a (Linux)
 
 on:
+  push:
+    branches: [main]
+    paths-ignore:
+      - "**.md"
   workflow_dispatch:
 
 permissions:
@@ -122,9 +126,9 @@ jobs:
             ~/.cargo/registry
             ~/.cargo/git
             ${{ github.workspace }}/_build/native_rust_core/target
-          key: linux-ohos-cargo-${{ hashFiles('**/Cargo.lock') }}
+          key: linux-ohos-cargo-v2-${{ hashFiles('**/Cargo.lock') }}
           restore-keys: |
-            linux-ohos-cargo-
+            linux-ohos-cargo-v2-
 
       - name: Cache OHOS external static libraries
         uses: actions/cache@v4
@@ -448,7 +452,11 @@ jobs:
           chmod +x scripts/aarch64-unknown-linux-ohos-clang++.sh
           chmod +x scripts/ohos-llvm-ar.sh
 
-          export SODIUM_LIB_DIR="$RUSTDESK_HARMONY_BUILD_DIR/build/libsodium/$TARGET_TRIPLE/lib"
+          echo "Clean stale host build-script artifacts that may have linked target libsodium"
+          rm -rf "$CARGO_TARGET_DIR/release/build/rustdesk-"* || true
+          rm -rf "$CARGO_TARGET_DIR/release/build/libsodium-sys-"* || true
+          rm -f "$CARGO_TARGET_DIR/release/deps/liblibsodium_sys-"*.rlib || true
+          unset SODIUM_LIB_DIR || true
 
           ./scripts/build_native_bridge.sh "$TARGET_TRIPLE" release
 
