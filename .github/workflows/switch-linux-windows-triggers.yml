@@ -1,6 +1,10 @@
 name: Switch Linux and Windows workflow triggers
 
 on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/switch-linux-windows-triggers.yml"
   workflow_dispatch:
 
 permissions:
