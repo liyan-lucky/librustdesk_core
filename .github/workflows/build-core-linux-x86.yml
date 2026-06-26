@@ -196,7 +196,7 @@ jobs:
           export CFLAGS="--target=$CLANG_TARGET --sysroot=$sdk_sysroot -I$arch_include -I$usr_include -D__MUSL__ -fPIC -O2"
           export CXXFLAGS="$CFLAGS"
           export LDFLAGS="--target=$CLANG_TARGET --sysroot=$sdk_sysroot"
-          ../configure --target=x86_64-linux-gcc --prefix="$install_root" --libdir="$install_root/lib" --enable-static --disable-shared --disable-examples --disable-tools --disable-docs --disable-unit-tests --disable-install-bins --disable-install-srcs --disable-dependency-tracking --disable-runtime-cpu-detect --disable-asm --enable-vp8 --enable-vp9 --enable-vp9-highbitdepth
+          ../configure --target=x86_64-linux-gcc --prefix="$install_root" --libdir="$install_root/lib" --enable-static --disable-shared --disable-examples --disable-tools --disable-docs --disable-unit-tests --disable-install-bins --disable-install-srcs --disable-dependency-tracking --disable-runtime-cpu-detect --enable-vp8 --enable-vp9 --enable-vp9-highbitdepth
           make -j$(nproc) libvpx.a
           mkdir -p "$install_root/include/vpx" "$install_root/lib/pkgconfig"
           cp -f libvpx.a "$install_root/lib/libvpx.a"
