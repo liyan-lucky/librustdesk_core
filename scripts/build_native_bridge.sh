@@ -102,12 +102,13 @@ export NM="$LLVM_BIN/llvm-nm"
 export RANLIB="$LLVM_BIN/llvm-ranlib"
 
 # Sodium
-SODIUM_LIB_DIR=${SODIUM_LIB_DIR:-"$BUILD_ROOT/build/libsodium/$TARGET_TRIPLE/lib"}
-if [ -d "$SODIUM_LIB_DIR" ]; then
-  # Use target-specific sodium dir to avoid host/target conflict
-  # Do NOT set global SODIUM_LIB_DIR as it breaks host build scripts
-  export "SODIUM_LIB_DIR_${TARGET_KEY_CC}=$SODIUM_LIB_DIR"
+# Keep sodium path target-specific only. A global SODIUM_LIB_DIR leaks into host build scripts
+# and makes x86_64 build scripts try to link aarch64/ohos static objects.
+TARGET_SODIUM_LIB_DIR=${SODIUM_LIB_DIR:-"$BUILD_ROOT/build/libsodium/$TARGET_TRIPLE/lib"}
+if [ -d "$TARGET_SODIUM_LIB_DIR" ]; then
+  export "SODIUM_LIB_DIR_${TARGET_KEY_CC}=$TARGET_SODIUM_LIB_DIR"
 fi
+unset SODIUM_LIB_DIR || true
 
 # Vcpkg
 export VCPKG_ROOT
