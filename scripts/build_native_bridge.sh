@@ -137,6 +137,52 @@ for stale_dir in \
   fi
 done
 
+# Patch libsodium's bundled autotools config.sub because libsodium-sys 0.2.7
+# calls configure with --host=aarch64-unknown-linux-ohos, while the bundled
+# config.sub does not recognize the ohos OS name.
+patched_config_sub=false
+for config_sub in \
+  "$HOME/.cargo/registry/src"/*/libsodium-sys-0.2.7/libsodium/build-aux/config.sub \
+  "$HOME/.cargo/registry/src/manual/libsodium-sys-0.2.7/libsodium/build-aux/config.sub"; do
+  if [ ! -f "$config_sub" ]; then
+    continue
+  fi
+
+  if ! grep -q 'OHOS compatibility patch for librustdesk_core' "$config_sub"; then
+    tmp_config_sub="$config_sub.tmp"
+    {
+      head -n 1 "$config_sub"
+      cat <<'PATCH'
+# OHOS compatibility patch for librustdesk_core
+case "$1" in
+  *-linux-ohos)
+    set -- "${1%-linux-ohos}-linux-gnu"
+    ;;
+esac
+PATCH
+      tail -n +2 "$config_sub"
+    } > "$tmp_config_sub"
+    cat "$tmp_config_sub" > "$config_sub"
+    rm -f "$tmp_config_sub"
+    chmod +x "$config_sub"
+  fi
+
+  echo "Patched libsodium config.sub: $config_sub"
+  "$config_sub" "$TARGET_TRIPLE" >/dev/null
+  patched_config_sub=true
+done
+
+if [ "$patched_config_sub" != "true" ]; then
+  echo "Warning: no libsodium config.sub was patched before cargo build." 1>&2
+  find "$HOME/.cargo/registry/src" -maxdepth 6 -path '*libsodium-sys-0.2.7*config.sub' -print 2>/dev/null || true
+fi
+
+# Clean stale libsodium-sys build outputs so Cargo copies the patched config.sub.
+rm -rf "$CARGO_TARGET_DIR/release/build"/libsodium-sys-* 2>/dev/null || true
+rm -f "$CARGO_TARGET_DIR/release/deps"/liblibsodium_sys-*.rlib 2>/dev/null || true
+rm -rf "$CARGO_TARGET_DIR/$TARGET_TRIPLE/$PROFILE/build"/libsodium-sys-* 2>/dev/null || true
+rm -f "$CARGO_TARGET_DIR/$TARGET_TRIPLE/$PROFILE/deps"/liblibsodium_sys-*.rlib 2>/dev/null || true
+
 mkdir -p "$CARGO_TARGET_DIR"
 cd "$NATIVE_CORE_DIR"
 env \
