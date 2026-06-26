@@ -146,7 +146,7 @@ jobs:
           if [ ! -d "$crate_dir" ]; then
             fetch_dir="$RUNNER_TEMP/libsodium-sys-fetch"
             rm -rf "$fetch_dir"
-            mkdir -p "$fetch_dir" "$registry_src/manual"
+            mkdir -p "$fetch_dir/src" "$registry_src/manual"
 
             cat > "$fetch_dir/Cargo.toml" <<'EOF'
           [package]
@@ -158,6 +158,7 @@ jobs:
           libsodium-sys = "=0.2.7"
           EOF
 
+            printf 'pub fn libsodium_sys_fetch_dummy() {}\n' > "$fetch_dir/src/lib.rs"
             CARGO_NET_RETRY=5 cargo fetch --manifest-path "$fetch_dir/Cargo.toml"
 
             fetched_crate=$(find "$registry_src" -mindepth 2 -maxdepth 2 -type d -name 'libsodium-sys-0.2.7' | grep -v '/manual/' | head -n 1)
