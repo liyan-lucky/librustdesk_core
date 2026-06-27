@@ -344,11 +344,35 @@ jobs:
             sha256sum "$f"
           done
 
+      - name: Compute next release number
+        id: release_number
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          existing_numbers=$(
+            gh api repos/${{ github.repository }}/releases --paginate --jq '.[].tag_name' \
+              | grep -E '^core-[0-9]{3}$' \
+              | sed 's/^core-//' \
+              | sort -n || true
+          )
+
+          if [ -z "$existing_numbers" ]; then
+            next=1
+          else
+            last=$(printf '%s\n' "$existing_numbers" | tail -1)
+            next=$((10#$last + 1))
+          fi
+
+          release_number=$(printf '%03d' "$next")
+          echo "release_number=$release_number" >> "$GITHUB_OUTPUT"
+          echo "tag=core-$release_number" >> "$GITHUB_OUTPUT"
+
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: core-${{ github.run_number }}
-          name: "librustdesk_core Build ${{ github.run_number }}"
+          tag_name: core-${{ steps.release_number.outputs.release_number }}
+          name: "librustdesk_core Build ${{ steps.release_number.outputs.release_number }}"
           body: |
             Release notes:
 
@@ -360,11 +384,11 @@ jobs:
             Build profile: Cargo release
 
             Artifacts:
-            - Tag: core-${{ github.run_number }}
+            - Tag: core-${{ steps.release_number.outputs.release_number }}
               - Asset: librustdesk_core.a (arm64-v8a, real-device debugging)
               - Asset: librustdesk_core_x86_64.a (x86_64, virtual-device debugging)
           files: ./release-assets/*
           fail_on_unmatched_files: true
-          overwrite_files: true
+          overwrite_files: false
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
