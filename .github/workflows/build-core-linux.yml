@@ -374,17 +374,28 @@ jobs:
           tag_name: core-${{ steps.release_number.outputs.release_number }}
           name: "librustdesk_core Linux Build ${{ steps.release_number.outputs.release_number }}"
           body: |
-            Linux online dual-architecture build for librustdesk_core.a.
+            ## 简介
 
-            Build environment: ubuntu-22.04
-            Rust toolchain: 1.88.0
-            Target platforms: aarch64-unknown-linux-ohos + x86_64-unknown-linux-ohos
-            Build profile: Cargo release
+            本次发布为 RustDesk HarmonyOS 原生核心静态库构建产物，用于 HarmonyOS / OpenHarmony 应用侧集成远控核心能力。
 
-            Artifacts:
-            - Tag: core-${{ steps.release_number.outputs.release_number }}
-            - librustdesk_core.a (arm64-v8a, real-device debugging)
-            - librustdesk_core_x86_64.a (x86_64, virtual-device debugging)
+            该包基于 RustDesk 官方核心适配构建，包含 arm64 真机调试库和 x86_64 虚拟设备调试库，可直接放入 HAP 项目的对应 ABI 目录使用。
+
+            ## 构建信息
+
+            - 构建环境：Ubuntu 22.04
+            - Rust 工具链：1.88.0
+            - 目标平台：aarch64-unknown-linux-ohos + x86_64-unknown-linux-ohos
+            - 构建配置：Cargo release profile
+            - 发布标签：core-${{ steps.release_number.outputs.release_number }}
+
+            ## 产物说明
+
+            - librustdesk_core.a：arm64-v8a，适用于 HarmonyOS 真机调试
+            - librustdesk_core_x86_64.a：x86_64，适用于 HarmonyOS / OpenHarmony 虚拟设备调试
+
+            ## 使用说明
+
+            下载对应静态库后，复制到 HAP 项目的 `entry/src/main/libs/<ABI>/` 目录，并与当前仓库的 C++ NAPI 桥接层配套使用。
           files: ./release-assets/*
           overwrite_files: false
         env:
