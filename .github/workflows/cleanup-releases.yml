@@ -1,0 +1,47 @@
+name: Cleanup all releases
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: 'Type DELETE_ALL_RELEASES to delete every GitHub Release and its tag in this repository.'
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  cleanup:
+    name: Delete all releases and tags
+    runs-on: ubuntu-latest
+    steps:
+      - name: Verify confirmation
+        run: |
+          set -euo pipefail
+          if [ "${{ inputs.confirm }}" != "DELETE_ALL_RELEASES" ]; then
+            echo "Confirmation did not match. Nothing will be deleted."
+            exit 1
+          fi
+
+      - name: Delete releases and matching tags
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          mapfile -t tags < <(gh release list --limit 1000 --json tagName --jq '.[].tagName')
+
+          if [ "${#tags[@]}" -eq 0 ]; then
+            echo "No releases found."
+            exit 0
+          fi
+
+          printf 'Releases to delete:\n'
+          printf ' - %s\n' "${tags[@]}"
+
+          for tag in "${tags[@]}"; do
+            echo "Deleting release and tag: $tag"
+            gh release delete "$tag" --cleanup-tag --yes
+          done
+
+          echo "All releases and their tags were deleted."
