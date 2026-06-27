@@ -1,10 +1,10 @@
-name: Cleanup all releases
+name: Cleanup all releases and core tags
 
 on:
   workflow_dispatch:
     inputs:
       confirm:
-        description: 'Type DELETE_ALL_RELEASES to delete every GitHub Release and its tag in this repository.'
+        description: 'Type DELETE_ALL_RELEASES to delete every GitHub Release and all core-* release tags in this repository.'
         required: true
         type: string
 
@@ -13,7 +13,7 @@ permissions:
 
 jobs:
   cleanup:
-    name: Delete all releases and tags
+    name: Delete all releases and core tags
     runs-on: ubuntu-latest
     steps:
       - name: Verify confirmation
@@ -24,24 +24,47 @@ jobs:
             exit 1
           fi
 
-      - name: Delete releases and matching tags
+      - name: Delete releases
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
-          mapfile -t tags < <(gh release list --limit 1000 --json tagName --jq '.[].tagName')
+          mapfile -t release_tags < <(gh release list --limit 1000 --json tagName --jq '.[].tagName')
 
-          if [ "${#tags[@]}" -eq 0 ]; then
+          if [ "${#release_tags[@]}" -eq 0 ]; then
             echo "No releases found."
+          else
+            printf 'Releases to delete:\n'
+            printf ' - %s\n' "${release_tags[@]}"
+
+            for tag in "${release_tags[@]}"; do
+              echo "Deleting release and tag: $tag"
+              gh release delete "$tag" --cleanup-tag --yes || true
+            done
+          fi
+
+      - name: Delete residual core tags
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          mapfile -t tag_refs < <(
+            gh api repos/${{ github.repository }}/git/matching-refs/tags --paginate --jq '.[].ref' \
+              | sed 's#^refs/tags/##' \
+              | grep -E '^core(-linux)?-[0-9]+$' || true
+          )
+
+          if [ "${#tag_refs[@]}" -eq 0 ]; then
+            echo "No residual core release tags found."
             exit 0
           fi
 
-          printf 'Releases to delete:\n'
-          printf ' - %s\n' "${tags[@]}"
+          printf 'Residual core release tags to delete:\n'
+          printf ' - %s\n' "${tag_refs[@]}"
 
-          for tag in "${tags[@]}"; do
-            echo "Deleting release and tag: $tag"
-            gh release delete "$tag" --cleanup-tag --yes
+          for tag in "${tag_refs[@]}"; do
+            echo "Deleting tag ref: $tag"
+            gh api -X DELETE "repos/${{ github.repository }}/git/refs/tags/$tag" || true
           done
 
-          echo "All releases and their tags were deleted."
+          echo "All releases and core release tags were deleted."
