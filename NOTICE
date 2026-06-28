@@ -1,0 +1,7 @@
+librustdesk_core
+
+This repository is an unofficial third-party HarmonyOS / OpenHarmony adaptation project.
+
+The upstream project name and related marks belong to their respective owners and are used only to identify compatibility and source origin.
+
+This repository includes upstream source under rustdesk-master/ plus project-specific HarmonyOS adaptation, bridge, build, and documentation files.
