@@ -6,6 +6,7 @@ on:
       confirm:
         description: 'Type DELETE_ALL_RELEASES or all to delete every GitHub Release, all core-* tags, and old Actions workflow runs.'
         required: true
+        default: 'all'
         type: string
 
 permissions:
