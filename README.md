@@ -2,7 +2,7 @@
 
 > 免责声明：本项目为第三方非官方 HarmonyOS / OpenHarmony 适配项目，不属于上游项目官方发布、认可、赞助或背书的项目。上游项目名称和相关标识仅用于说明源码来源和兼容目标，相关权利归其各自权利人所有。
 >
-> 许可证与源码说明：本仓库包含基于上游源码的 HarmonyOS 适配、桥接和构建脚本。使用、修改、分发本仓库源码或发布产物时，请同时遵守上游许可证以及相关第三方依赖许可证要求。第三方说明见 `NOTICE` 与 `docs/THIRD_PARTY_NOTICES.md`。
+> 许可证与源码说明：本仓库包含基于上游源码的 HarmonyOS 适配、桥接和构建脚本。使用、修改、分发本仓库源码或发布产物时，请同时遵守上游许可证以及相关第三方依赖许可证要求。许可入口见 `LICENSE_NOTICE.md`、`COPYING`、`NOTICE` 与 `docs/THIRD_PARTY_NOTICES.md`。
 
 RustDesk HarmonyOS 原生核心静态库构建器。从 RustDesk 1.4.7 上游源码通过 OHOS 交叉编译构建 `librustdesk_core.a`，并生成 C++ NAPI 桥接层，供 HarmonyOS ArkTS 应用集成使用。
 
@@ -117,6 +117,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts\build_native_bridge.
 - 本项目不是上游官方项目。
 - 上游项目名称仅用于说明源码来源和兼容目标。
 - 发布静态库时，应同时保留对应源码、构建脚本、补丁、第三方声明和许可证说明。
+- 许可入口见：`LICENSE_NOTICE.md`、`COPYING`。
 - 第三方声明见：`NOTICE`、`docs/THIRD_PARTY_NOTICES.md`。
 - 上游许可证文本保留在：`rustdesk-master/LICENCE`。
 
