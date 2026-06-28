@@ -10,20 +10,26 @@ if [ "$release_number" = "001" ]; then
   cat > "$output_path" <<EOF
 # RustDesk HarmonyOS 原生核心首发版
 
+## 重要声明
+
+本项目为第三方非官方 HarmonyOS / OpenHarmony 适配项目，不代表上游项目官方发布、认可、赞助或背书。上游项目名称和相关标识仅用于说明源码来源和兼容目标。
+
+本发布包包含基于上游源码构建的原生静态库。对应源码、构建脚本、补丁和桥接层代码可在本仓库对应 tag / commit 中获取。使用、修改或再分发本发布包时，请同时遵守上游许可证以及相关第三方依赖许可证要求。
+
 ## 简介
 
-这是 librustdesk_core 的第一个正式发布包，面向 HarmonyOS / OpenHarmony 应用侧集成 RustDesk 远程控制核心能力。
+这是 librustdesk_core 的第一个正式发布包，面向 HarmonyOS / OpenHarmony 应用侧集成远程控制核心能力。
 
-本发布包基于 RustDesk 官方核心进行 HarmonyOS 适配，输出可被 HAP 工程引用的原生静态库文件。它主要用于 OpenRustDesk / HarmonyOS 客户端中的 C++ NAPI 桥接层，让 ArkTS 应用侧能够调用底层 RustDesk core 能力。
+本发布包基于上游核心进行 HarmonyOS 适配，输出可被 HAP 工程引用的原生静态库文件。它主要用于 OpenRustDesk / HarmonyOS 客户端中的 C++ NAPI 桥接层，让 ArkTS 应用侧能够调用底层 core 能力。
 
 ## 当前定位
 
-本仓库发布的不是完整 App，而是 HarmonyOS 端 RustDesk 原生核心库。
+本仓库发布的不是完整 App，而是 HarmonyOS 端原生核心库。
 
-- 提供 RustDesk 官方核心能力的 HarmonyOS 静态库封装。
+- 提供上游核心能力的 HarmonyOS 静态库封装。
 - 配合当前仓库的 C++ NAPI、ArkTS 类型定义和 App 侧调用逻辑使用。
 - 支持 arm64 真机调试和 x86_64 虚拟设备调试。
-- 用于后续 HAP 构建、远控会话、画面传输、文件传输等功能集成。
+- 用于后续 HAP 构建、会话连接、画面传输、文件传输等功能集成。
 
 ## 已包含产物
 
@@ -34,9 +40,9 @@ if [ "$release_number" = "001" ]; then
 
 ## 当前能力说明
 
-当前核心已围绕 HarmonyOS 适配 RustDesk 官方核心路径，重点包含：
+当前核心已围绕 HarmonyOS 适配上游核心路径，重点包含：
 
-- RustDesk official session/core 连接链路。
+- 上游 session/core 连接链路。
 - 出站远控会话基础能力。
 - HarmonyOS 端原生核心静态库构建。
 - arm64 + x86_64 双架构产物输出。
@@ -44,7 +50,7 @@ if [ "$release_number" = "001" ]; then
 - HarmonyOS 被控端画面传输相关适配基础。
 - 文件传输、终端、聊天、剪贴板等能力的核心桥接基础。
 
-部分能力仍需要结合 App 侧、权限、UI 和真实设备继续做端到端验收；具体以仓库文档中的官方核心对齐审计和后续测试记录为准。
+部分能力仍需要结合 App 侧、权限、UI 和真实设备继续做端到端验收；具体以仓库文档中的上游核心对齐审计和后续测试记录为准。
 
 ## 构建信息
 
@@ -80,9 +86,15 @@ else
   cat > "$output_path" <<EOF
 # RustDesk HarmonyOS 原生核心更新版
 
+## 重要声明
+
+本项目为第三方非官方 HarmonyOS / OpenHarmony 适配项目，不代表上游项目官方发布、认可、赞助或背书。上游项目名称和相关标识仅用于说明源码来源和兼容目标。
+
+本发布包对应源码、构建脚本、补丁和桥接层代码可在本仓库对应 tag / commit 中获取。使用、修改或再分发本发布包时，请同时遵守上游许可证以及相关第三方依赖许可证要求。
+
 ## 简介
 
-本次发布为 librustdesk_core 的后续更新包，用于 HarmonyOS / OpenHarmony 应用侧集成 RustDesk 远程控制核心能力。
+本次发布为 librustdesk_core 的后续更新包，用于 HarmonyOS / OpenHarmony 应用侧集成远程控制核心能力。
 
 该版本延续首发版的双架构发布格式，继续输出 arm64 真机调试库和 x86_64 虚拟设备调试库。
 
