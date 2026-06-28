@@ -1,14 +1,21 @@
 # librustdesk_core
 
-RustDesk HarmonyOS native core static library builder. Builds `librustdesk_core.a` from RustDesk 1.4.7 upstream source with OHOS cross-compilation, and generates the complete C++ NAPI bridge layer for HarmonyOS ArkTS applications.
+> Disclaimer: This is an unofficial third-party HarmonyOS / OpenHarmony adaptation project. It is not affiliated with, endorsed by, sponsored by, or officially maintained by the upstream project. Upstream project names and related marks are used only to identify source origin and compatibility targets.
+>
+> License and source notice: this repository contains HarmonyOS adaptation code, bridge code, build scripts, and upstream-derived source. When using, modifying, distributing, or redistributing this repository or its build outputs, review and comply with the upstream license and third-party dependency licenses. See `NOTICE` and `docs/THIRD_PARTY_NOTICES.md`.
 
-> 2026-06-21 23:38 integration candidate: arm64 archive `131,091,732` bytes, SHA256 `E4614BAE4EDB54F2C0A2CFECE96A2E99D558B6900693B2B3A9B08B8F3DCD5D5D`; x86_64 archive `130,090,572` bytes, SHA256 `DB0283F44EA5E5D09A23D1756929B171F28FF2A602D595941902A18ECE5F17DD`. Both are local 2026-06-21 builds from the same source baseline, embedded in the final App HAP and verified by the package audit, 100-round audit and device cold start. Huawei controlled-side input injection is intentionally shelved as unsupported.
-
-> 2026-06-22 online closure: commit `a7f77950d108f57b7f871eddf2c360db114d1c6d`, Windows run `27920089950`, Release/tag `core-34`. The arm64 asset is `133,495,306` bytes / SHA256 `90A28361F8A7801E66B0854334490F6B340BEA26C95E3BC4C666D6C665078337`; the x86_64 asset is `131,336,988` bytes / SHA256 `E587465E245DDA662A30110FC3FDEA139A2962295A4D73DCAAEEC9384FF18CE4`. Both archives, required exports, and the final online HAP's dual-architecture CoreBuildInfo were verified; that HAP cold-started on both an arm64 phone and an x86_64 emulator.
-
-> 2026-06-26 status alignment: HarmonyOS controlled-side video transfer has been confirmed on a real device. Remote input/control is treated as unsupported on the current HarmonyOS platform and the input-injection symbols are retained only for compatibility and diagnostics. File transfer, audio, voice call, recording, screenshot, full menu state and related non-video capabilities still require end-to-end validation. See `docs/OFFICIAL_CORE_GAP.md` for the official-core alignment audit.
+RustDesk HarmonyOS native core static library builder. It builds `librustdesk_core.a` from the RustDesk 1.4.7 upstream source through OHOS cross-compilation and provides a C++ NAPI bridge layer for HarmonyOS ArkTS applications.
 
 [中文](README.md)
+
+## Current status
+
+- Release tags use the unified `core-001`, `core-002`, `core-003` format.
+- Windows and Linux builds share the same release-number sequence.
+- A release number is reserved at build start; failed builds keep the reserved tag.
+- A GitHub Release and release assets are created only after both arm64 and x86_64 artifacts are generated and validated.
+- Release notes are updated without changing the tag or release name.
+- Linux can be triggered automatically after main-branch updates or manually. Windows remains manually triggered.
 
 ## Architecture
 
@@ -20,134 +27,99 @@ librustdesk_bridge.so
     -> Rust C ABI (native_rust_core/)
 librustdesk_core.a
     -> rustdesk_harmony_bridge
-    -> RustDesk official session/core (rustdesk-master/)
-RustDesk Server / Peer
+    -> upstream RustDesk session/core (rustdesk-master/)
+RustDesk server / peer
 ```
 
 ## Structure
 
 | Directory | Description |
 |-----------|-------------|
-| `native_rust_core/` | Rust bridge layer (bridge_api.rs, bridge_state.rs, lib.rs) |
-| `rustdesk-master/` | Upstream RustDesk source (1.4.7) with OHOS patches |
-| `patches/` | OHOS-specific crate patches (machine-uid) |
-| `rdev-fork/` | rdev input library fork with OHOS support |
-| `cpp/` | C++ NAPI bridge layer (abi.h, loader.cpp, CMakeLists.txt) |
+| `native_rust_core/` | Rust bridge layer (`bridge_api.rs`, `bridge_state.rs`, `lib.rs`) |
+| `rustdesk-master/` | Upstream RustDesk 1.4.7 source with OHOS patches |
+| `patches/` | OHOS-specific crate patches (`machine-uid`) |
+| `rdev-fork/` | rdev input-library fork with OHOS support |
+| `cpp/` | C++ NAPI bridge layer |
 | `scripts/` | Build scripts and code generators |
-
-## Key Files
-
-### Rust Bridge Layer (`native_rust_core/`)
-
-| File | Description |
-|------|-------------|
-| `src/bridge_api.rs` | C FFI exports (~2872 lines), all `rustdesk_bridge_*` functions |
-| `src/bridge_state.rs` | Bridge state snapshot management (BridgeSnapshot, event queue) |
-| `src/lib.rs` | Crate entry point |
-| `Cargo.toml` | `crate-type = ["staticlib"]`, depends on rustdesk 1.4.7 |
-| `build.rs` | Adds `-Wl,-z,notext` for OHOS target |
-
-### C++ NAPI Bridge Layer (`cpp/`)
-
-| File | Description |
-|------|-------------|
-| `rustdesk_bridge_abi.h` | C ABI header declaring all `rustdesk_bridge_*` functions |
-| `rustdesk_bridge_loader.cpp` | NAPI module loader, wraps C ABI as NAPI exports |
-| `ohos_stubs.cpp` | OHOS platform stubs (xcb, OH_TimeService, qsort_r) |
-| `CMakeLists.txt` | Links `librustdesk_core.a` into `librustdesk_bridge.so` |
-| `types/librustdesk_bridge/index.d.ts` | TypeScript type declarations for NAPI module |
-
-### Code Generation Scripts (`scripts/`)
-
-| Script | Description |
-|--------|-------------|
-| `generate_bridge_api.js` | Generate bridge_api.rs from core.rs |
-| `generate_cpp_bridge.js` | Generate ABI header and NAPI loader from core.rs |
-| `generate_ts_bridge.js` | Generate TS type declarations from core.rs |
-| `regenerate_all.js` | One-click regenerate all bridge code |
-| `dedup_abi.js` | Deduplicate ABI header declarations |
-| `dedup_loader.js` | Deduplicate NAPI registrations |
-| `dedup_loader_funcs.js` | Deduplicate NAPI function definitions |
-| `rename_mapping.js` | OHOS name to official wire_ name mapping |
-| `build_native_bridge.ps1` | Windows cross-compilation build script |
-| `build_native_bridge.sh` | Linux/macOS build script |
+| `docs/` | Architecture, gap, compliance, and validation documents |
 
 ## Build
 
-### Windows (Primary)
+### Windows
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File scripts\build_native_bridge.ps1
 ```
 
-The Windows script prepares target static dependencies before Cargo runs. On a cold runner it builds `libsodium`, downloads and builds `libvpx` `1.15.2`, downloads and builds `libyuv` revision `0faf8dd0e004520a61a603a4d2996d5ecc80dc3f`, and installs them under `VCPKG_INSTALLED_ROOT\arm64-linux`. For `libvpx`, build only the `libvpx.a` make target and manually install the public headers; do not run the default `make && make install` path, because it also builds the unused `libvpxrc.a` from C++ RTC rate-control sources (`vp9/ratectrl_rtc.cc`, `vp8/vp8_ratectrl_rtc.cc`). Minimal online SDK zips may not contain compatible libc++ headers, and MSYS2 libc++ is not a safe fallback for the OHOS clang bundled with the SDK. `libyuv` may use the SDK libc++ include directory when it exists, but the build must not depend on MSYS2 libc++ headers.
-
 ### Linux
 
 ```bash
 ./scripts/build_native_bridge.sh aarch64-unknown-linux-ohos release
+./scripts/build_native_bridge.sh x86_64-unknown-linux-ohos release
 ```
 
-### CI/CD
+## CI/CD
 
-**Windows online build**: `.github/workflows/build-core-windows.yml`
-- Runs on `windows-2022`
-- Rust toolchain: 1.88.0
-- Builds with Cargo `release` profile from `native_rust_core/Cargo.toml`
-- Rejects suspicious release assets outside `100,000,000` to `250,000,000` bytes
-- Output: `librustdesk_core.a` uploaded as release asset
+### Windows online build
 
-**Linux online build**: `.github/workflows/build-core-linux.yml`
-- Runs on `ubuntu-22.04`
-- Rust toolchain: 1.88.0
-- Manual trigger only (`workflow_dispatch`), no auto-trigger
-- Uses the same dependencies and compilation logic as the Windows build
-- Requires repository secret `OHOS_SDK_LINUX_ZIP_URL` (Linux OHOS Native SDK download URL)
+- Workflow: `.github/workflows/build-core-windows.yml`
+- Runner: `windows-2022`
+- Trigger: manual (`workflow_dispatch`)
+- Targets: `aarch64-unknown-linux-ohos` + `x86_64-unknown-linux-ohos`
+- Assets: `librustdesk_core.a` + `librustdesk_core_x86_64.a`
 
-### Output
+### Linux online build
 
-- Standard local static library: `%VSCODE_ROOT%\99_Temp\librustdesk_core\cargo_target\<target-triple>\release\librustdesk_harmony_bridge.a`
-- Repository-local `native_rust_core/target/` is regenerable cache and is no longer retained after the 2026-06-21 cleanup.
-- Rename to `librustdesk_core.a` when copying to HAP project
+- Workflow: `.github/workflows/build-core-linux.yml`
+- Auto trigger: `.github/workflows/auto-linux-core-build.yml`
+- Runner: `ubuntu-22.04`
+- Trigger: automatic after main-branch updates, or manual
+- Targets: `aarch64-unknown-linux-ohos` + `x86_64-unknown-linux-ohos`
+- Assets: `librustdesk_core.a` + `librustdesk_core_x86_64.a`
+- Required repository secret: `OHOS_SDK_LINUX_ZIP_URL`
 
-## Usage in HAP Project
+### Release notes
 
-1. Download `librustdesk_core.a` from [GitHub Releases](https://github.com/liyan-lucky/librustdesk_core/releases)
-2. Copy to `11_Rustdesk_harmonyos/entry/src/main/libs/arm64/librustdesk_core.a`
-3. Copy `cpp/` files to `11_Rustdesk_harmonyos/entry/src/main/cpp/` (if bridge layer updated)
-4. Copy `cpp/types/` to `11_Rustdesk_harmonyos/entry/src/main/cpp/types/` (if TS declarations updated)
-5. Build HAP: `scripts\build_hap.bat`
+- Template script: `.github/scripts/write-core-release-notes.sh`
+- Auto updater: `.github/workflows/update-core-release-notes.yml`
+- `core-001` uses the detailed first-release notes.
+- `core-002` and later use the update-release notes template.
+- Only the release notes body is updated; tags and release names are not changed.
 
-## Function Name Mapping
+## Release assets
 
-OHOS uses `rustdesk_bridge_*` prefix for all C FFI functions. Some names differ from official `wire_*` names:
+| File | Architecture | Purpose |
+|------|--------------|---------|
+| `librustdesk_core.a` | arm64-v8a | HarmonyOS device debugging and integration |
+| `librustdesk_core_x86_64.a` | x86_64 | HarmonyOS / OpenHarmony emulator debugging |
 
-| OHOS Name | Official Name | Notes |
-|-----------|---------------|-------|
-| connect_to_peer | session_start | NAPI preserves old name, calls new C function |
-| set_incoming_service_enabled | main_start_service | NAPI preserves old name |
-| session_alternative_codecs | session_get_alternative_codecs | Renamed to match official |
-| main_use_texture_render | main_get_use_texture_render | Renamed to match official |
+Both artifacts must exist and pass size validation before a GitHub Release is created. If any build step fails, the reserved tag remains, but no GitHub Release or release asset is published.
 
-See `scripts/rename_mapping.js` for complete mapping.
+## Usage in HAP projects
 
-## Upstream Compatibility
+1. Download the corresponding static library from GitHub Releases.
+2. Copy it into the HAP project's ABI directory, for example `entry/src/main/libs/<ABI>/`.
+3. Use it together with this repository's C++ NAPI bridge, ArkTS type declarations, and application-side calling logic.
+4. If the bridge layer changed, also sync `cpp/` and `cpp/types/`.
 
-- Current version: RustDesk 1.4.7
-- OHOS target: `aarch64-unknown-linux-ohos`
-- Key OHOS adaptations:
-  - `cfg(target_env = "ohos")` excludes desktop Linux dependencies
-  - `scrap` without wayland/gtk/dbus features
-  - `arboard` without wayland-data-control feature
-  - Independent `rendezvous_mediator_ohos.rs` for LAN discovery
-  - `harmony_bridge/core.rs` as session entry point (not flutter_ffi.rs)
+## Capability boundaries
 
-## Current Video and Incoming Service Status
+- Outgoing remote sessions use the upstream session path and publish video through `on_rgba -> publish_real_video_frame -> video-frame`.
+- The OHOS viewing side uses libvpx software decoding for VP8/VP9 and libyuv for YUV-to-RGBA conversion.
+- HarmonyOS controlled-side video transfer has been confirmed on a real device.
+- HarmonyOS controlled-side remote input/control is treated as unsupported on the current platform. Do not present input injection as a supported capability or release blocker.
+- File transfer, audio, voice calls, recording, screenshots, remote cursor, and complete menu-state behavior still require end-to-end validation.
 
-- Outgoing remote-control sessions use the real RustDesk session path and publish video through `on_rgba -> publish_real_video_frame -> video-frame`.
-- OHOS outgoing viewer video decode uses software VP8/VP9 through `libvpx` plus YUV-to-RGBA conversion through `libyuv`. `codec_ohos.rs` must not advertise VP9 support unless `handle_video_frame()` can decode frames and call `GoogleImage::to()`.
-- Keep libvpx VP8/VP9 encoders enabled unless `scrap` bindings are redesigned. `scrap/src/bindings/vpx_ffi.h` includes `vp8cx.h` and `vpx_encoder.h`, and `common/vpxcodec.rs` references encoder APIs even when the current OHOS user flow is viewer-side decode. Skip only `libvpxrc.a`; do not disable the encoders that produce the public C API used by `scrap`.
-- HarmonyOS incoming/controlled-side video transfer has been confirmed on a real device: phone-side capture reaches the core and Windows can see a real, continuously refreshed screen.
-- HarmonyOS incoming/controlled-side remote input/control is treated as platform-unsupported for now. Do not present it as supported in UI/state; related symbols are compatibility, diagnostics and explicit-failure boundaries only.
-- `main_start_service(true)` status must distinguish video readiness from input readiness. Video can be reported ready once the actual serving pipeline is ready, but input capability must remain separately marked unsupported/false. Do not report full controlled-side capability just because rendezvous/options refreshed or native buffers exist.
-- File transfer, audio, voice call, recording, screenshot, remote cursor and full menu-state behavior remain end-to-end validation items. See `docs/OFFICIAL_CORE_GAP.md` for priorities and acceptance criteria.
+See `docs/OFFICIAL_CORE_GAP.md` for detailed capability gaps and validation boundaries.
+
+## Compliance notes
+
+- This is not an upstream official project.
+- Upstream project names are used only to identify source origin and compatibility targets.
+- Static-library redistribution should preserve the corresponding source, build scripts, patches, third-party notices, and license information.
+- Third-party notices: `NOTICE`, `docs/THIRD_PARTY_NOTICES.md`.
+- Upstream license text: `rustdesk-master/LICENCE`.
+
+## Historical notes
+
+Old test package numbers, historical SHA values, historical package sizes, and historical release IDs are no longer shown as the current primary status. The current release process is the unified `core-XXX` flow described above.
