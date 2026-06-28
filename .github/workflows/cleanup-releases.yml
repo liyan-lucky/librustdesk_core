@@ -4,9 +4,9 @@ on:
   workflow_dispatch:
     inputs:
       confirm:
-        description: 'Type DELETE_ALL_RELEASES or all to delete every GitHub Release, all core-* tags, and old Actions workflow runs.'
+        description: 'Type ALL or DELETE_ALL_RELEASES to delete every GitHub Release, all core-* tags, and old Actions workflow runs.'
         required: true
-        default: 'all'
+        default: 'ALL'
         type: string
 
 permissions:
@@ -22,9 +22,9 @@ jobs:
         run: |
           set -euo pipefail
           confirm="${{ inputs.confirm }}"
-          if [ "$confirm" != "DELETE_ALL_RELEASES" ] && [ "$confirm" != "all" ]; then
+          if [ "$confirm" != "DELETE_ALL_RELEASES" ] && [ "$confirm" != "ALL" ] && [ "$confirm" != "all" ]; then
             echo "Confirmation did not match. Nothing will be deleted."
-            echo "Please type DELETE_ALL_RELEASES or all."
+            echo "Please type ALL or DELETE_ALL_RELEASES."
             exit 1
           fi
 
