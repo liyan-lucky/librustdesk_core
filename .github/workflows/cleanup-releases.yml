@@ -1,19 +1,20 @@
-name: Cleanup all releases and core tags
+name: Cleanup all releases, core tags, and workflow runs
 
 on:
   workflow_dispatch:
     inputs:
       confirm:
-        description: 'Type DELETE_ALL_RELEASES or all to delete every GitHub Release and all core-* release tags in this repository.'
+        description: 'Type DELETE_ALL_RELEASES or all to delete every GitHub Release, all core-* tags, and old Actions workflow runs.'
         required: true
         type: string
 
 permissions:
   contents: write
+  actions: write
 
 jobs:
   cleanup:
-    name: Delete all releases and core tags
+    name: Delete all releases, core tags, and workflow runs
     runs-on: ubuntu-latest
     steps:
       - name: Verify confirmation
@@ -58,15 +59,43 @@ jobs:
 
           if [ "${#tag_refs[@]}" -eq 0 ]; then
             echo "No residual core release tags found."
+          else
+            printf 'Residual core release tags to delete:\n'
+            printf ' - %s\n' "${tag_refs[@]}"
+
+            for tag in "${tag_refs[@]}"; do
+              echo "Deleting tag ref: $tag"
+              gh api -X DELETE "repos/${{ github.repository }}/git/refs/tags/$tag" || true
+            done
+          fi
+
+      - name: Delete old workflow runs
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          CURRENT_RUN_ID: ${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          mapfile -t run_ids < <(
+            gh api repos/${{ github.repository }}/actions/runs --paginate --jq '.workflow_runs[].id' || true
+          )
+
+          if [ "${#run_ids[@]}" -eq 0 ]; then
+            echo "No workflow runs found."
             exit 0
           fi
 
-          printf 'Residual core release tags to delete:\n'
-          printf ' - %s\n' "${tag_refs[@]}"
-
-          for tag in "${tag_refs[@]}"; do
-            echo "Deleting tag ref: $tag"
-            gh api -X DELETE "repos/${{ github.repository }}/git/refs/tags/$tag" || true
+          printf 'Workflow runs to delete, excluding current run %s:\n' "$CURRENT_RUN_ID"
+          for run_id in "${run_ids[@]}"; do
+            if [ "$run_id" = "$CURRENT_RUN_ID" ]; then
+              echo "Skipping current cleanup run: $run_id"
+              continue
+            fi
+            echo "Deleting workflow run: $run_id"
+            gh api -X DELETE "repos/${{ github.repository }}/actions/runs/$run_id" || true
           done
 
-          echo "All releases and core release tags were deleted."
+      - name: Cleanup summary
+        run: |
+          echo "Cleanup completed."
+          echo "Deleted all GitHub Releases, core release tags, and old workflow run records that the token was allowed to delete."
+          echo "The current cleanup workflow run may remain until a later cleanup run deletes it."
