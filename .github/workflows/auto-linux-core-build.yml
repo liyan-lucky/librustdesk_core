@@ -1,0 +1,26 @@
+name: Auto trigger Linux core build
+
+on:
+  push:
+    branches:
+      - main
+    paths-ignore:
+      - '.github/workflows/cleanup-releases.yml'
+      - '.github/workflows/auto-linux-core-build.yml'
+      - '.github/workflows/update-core-release-notes.yml'
+
+permissions:
+  actions: write
+  contents: read
+
+jobs:
+  trigger:
+    name: Trigger Linux core build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger Linux build workflow
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          gh workflow run build-core-linux.yml --repo "${{ github.repository }}" --ref "${{ github.ref_name }}"
