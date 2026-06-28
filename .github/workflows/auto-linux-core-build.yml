@@ -1,6 +1,7 @@
 name: Auto trigger Linux core build
 
 on:
+  workflow_dispatch:
   push:
     branches:
       - main
@@ -23,4 +24,8 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
-          gh workflow run build-core-linux.yml --repo "${{ github.repository }}" --ref "${{ github.ref_name }}"
+          ref_name="${{ github.ref_name }}"
+          if [ -z "$ref_name" ]; then
+            ref_name="main"
+          fi
+          gh workflow run build-core-linux.yml --repo "${{ github.repository }}" --ref "$ref_name"
