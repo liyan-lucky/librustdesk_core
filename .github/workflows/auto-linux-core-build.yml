@@ -9,17 +9,23 @@ on:
       - '.github/workflows/cleanup-releases.yml'
       - '.github/workflows/auto-linux-core-build.yml'
       - '.github/workflows/update-core-release-notes.yml'
+      - '.github/workflows/manual-update-core-release-notes.yml'
 
 permissions:
   actions: write
-  contents: read
+  contents: write
 
 jobs:
   trigger:
     name: Trigger Linux core build
     runs-on: ubuntu-latest
+    timeout-minutes: 180
     steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
       - name: Trigger Linux build workflow
+        id: trigger_linux
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
@@ -28,4 +34,70 @@ jobs:
           if [ -z "$ref_name" ]; then
             ref_name="main"
           fi
+          echo "ref_name=$ref_name" >> "$GITHUB_OUTPUT"
           gh workflow run build-core-linux.yml --repo "${{ github.repository }}" --ref "$ref_name"
+
+      - name: Wait for Linux build workflow
+        id: linux_run
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REF_NAME: ${{ steps.trigger_linux.outputs.ref_name }}
+        run: |
+          set -euo pipefail
+          run_id=""
+          for i in $(seq 1 30); do
+            run_id=$(
+              gh run list --repo "${{ github.repository }}" \
+                --workflow build-core-linux.yml \
+                --branch "$REF_NAME" \
+                --limit 10 \
+                --json databaseId,status,conclusion,event \
+                --jq '[.[] | select(.event == "workflow_dispatch")][0].databaseId // empty'
+            )
+            if [ -n "$run_id" ]; then
+              break
+            fi
+            echo "Waiting for Linux workflow run to appear... ($i)"
+            sleep 10
+          done
+          if [ -z "$run_id" ]; then
+            echo "Linux workflow run was not found."
+            exit 1
+          fi
+          echo "linux_run_id=$run_id" >> "$GITHUB_OUTPUT"
+          gh run watch "$run_id" --repo "${{ github.repository }}" --exit-status
+
+      - name: Locate latest core release
+        id: release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          tag=$(
+            gh release list --repo "${{ github.repository }}" --limit 50 --json tagName,createdAt \
+              --jq '[.[] | select(.tagName | test("^core-[0-9]{3}$"))] | sort_by(.createdAt) | last | .tagName'
+          )
+          if [ -z "$tag" ] || [ "$tag" = "null" ]; then
+            echo "No core release found."
+            exit 1
+          fi
+          number="${tag#core-}"
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "number=$number" >> "$GITHUB_OUTPUT"
+
+      - name: Generate release notes
+        env:
+          RELEASE_NUMBER: ${{ steps.release.outputs.number }}
+          RELEASE_TAG: ${{ steps.release.outputs.tag }}
+          BUILD_OS: Ubuntu 22.04
+        run: |
+          bash .github/scripts/write-core-release-notes.sh release-notes.md
+
+      - name: Update release notes only
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          gh release edit "${{ steps.release.outputs.tag }}" \
+            --repo "${{ github.repository }}" \
+            --notes-file release-notes.md
