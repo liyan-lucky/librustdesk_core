@@ -1,90 +1,95 @@
 # librustdesk_core 文档索引
 
-> 核心项目文档。所有核心相关的架构、编译、桥接函数、调试文档均在此维护。
+> 核心项目文档入口。当前主状态以本文件、根目录 `README.md` 和 `OFFICIAL_CORE_GAP.md` 为准。历史测试包编号、历史 SHA、历史包体积和旧 Release 记录不再作为当前状态展示。
 
-> 2026-06-26 对齐审计：HarmonyOS 被控端画面传输已由用户真机实测跑通；被控端远程输入/操控当前按鸿蒙平台不支持处理，不再作为发布阻塞项，也不得在 UI/状态中宣称可控；文件传输、音频、语音、录制、截图、远程光标、完整菜单状态等仍按“未逐项端到端验证”处理。官方核心差距和补齐顺序见 `OFFICIAL_CORE_GAP.md`。
+## 当前状态摘要
 
-> 2026-06-22 00:30：本地双架构集成、100 轮最终审计、精准清理/备份、双仓库发布、线上资产下载复验以及线上 HAP 的 arm64 真机/x86_64 虚拟机冷启动均已完成。当前权威 Core 为 `a7f7795` / run `27920089950` / `core-34`。先读 `CORE.md`、`OFFICIAL_CORE_GAP.md`、`CONNECTION_DEBUG_LOG.md`、`WORKSPACE_PATHS.md`，再读 App `docs/AGENT_HANDOFF.md` 的最新摘要。
+- 本项目为第三方非官方 HarmonyOS / OpenHarmony 适配项目，不代表上游项目官方发布、认可、赞助或背书。
+- 当前发布标签统一使用 `core-001`、`core-002`、`core-003` 形式。
+- Windows 和 Linux 共用同一套版本编号。
+- 构建启动后立即预留版本号；失败也保留标签占号。
+- 只有 arm64 和 x86_64 两个产物都完整生成并校验通过，才创建 Release 并上传正式包。
+- Linux 可由 main 更新自动触发，也可手动触发；Windows 保持手动触发。
+- Release 说明只更新介绍内容，不改标签和 Release 名称。
+- HarmonyOS 被控端画面传输已由真机实测跑通。
+- HarmonyOS 被控端远程输入/操控当前按平台不支持处理，不作为发布阻塞项，也不能在 UI 或状态中宣称支持。
+- 文件传输、音频、语音、录制、截图、远程光标、完整菜单状态等仍按未逐项端到端验证处理。
 
-> 2026-06-21 路径规范：Core 构建、测试、日志、备份统一写入 `%VSCODE_ROOT%\99_Temp`（当前 `F:\Visual_Studio_Code\99_Temp`），详见 `docs/WORKSPACE_PATHS.md`。不要使用盘符根 `F:\99_Temp`、工作区根 `_tmp_*` 或仓库内临时目录作为长期输出。16:26 二次清理后，Core 仓库内 target/log/cache 已删除，当前 ignored 保留项只应是 `entry/`、`rdev-fork/`、`rustdesk-master/src/version.rs`。
+## 推荐阅读顺序
 
-> 2026-06-16 Linux 构建经验：新增 `.github/workflows/build-core-linux.yml`，使用 `ubuntu-22.04` runner 在线构建 `librustdesk_core.a`。仅手动触发，不自动触发。需要设置仓库密钥 `OHOS_SDK_LINUX_ZIP_URL`（Linux 版 OHOS Native SDK 下载地址）。Linux 构建不需要 MSYS2，直接用系统 bash/perl/make 编译依赖库，构建速度应快于 Windows。发布标签格式为 `core-linux-*`，与 Windows 的 `core-*` 区分。所有 Release 发布说明已统一为中文默认。
-
-> 2026-06-13 经验：如果手机端已 `session-connected` 且 `quality-status` 显示 `codec_format=VP9`，但没有 `video-frame`，先看 `CORE.md` 的 OHOS VP8/VP9 解码修复记录和 `CONNECTION_DEBUG_LOG.md`，不要只查 `session_next_rgba()`。
-
-> 2026-06-13 CI note: if the online Windows runner fails building libvpx with `<cstdint>` not found, do not fall back to MSYS2 libc++ for OHOS clang. Run `27458902852` showed MSYS2 libc++ can be too new for the SDK clang. Build only the `libvpx.a` target and manually install the public headers, because the failing C++ RTC sources are for unused `libvpxrc.a`. Do not disable libvpx VP8/VP9 encoders unless `scrap` bindings and `common/vpxcodec.rs` are changed too.
-
-> 2026-06-14 bridge note: terminal open/input/resize/close must call official `Session` and terminal data must travel through events as base64 `dataBase64`; empty audio frame queues return `[]`. Chat NAPI four-argument calls read content from `args[2]`.
-
-> 2026-06-14 file-transfer note: checking ArkTS/NAPI/C ABI names is not enough. `InvokeUiSession` callbacks must emit the app listener events (`folder-files`, `file-transfer-start`, `job-progress`, `job-done`, `job-error`, `create-remote-dir`, `delete-remote-path`) and transfer start must expose the same `job_id` used by official `send_files()`.
-
-> 2026-06-14 UI-route note: if the app has both a direct bridge function and a generic option helper, check which one the UI actually calls. `switch-sides` is routed through `apply_session_option()` by the RemoteControl menu and must call official `Session::switch_sides()`.
-
-> 2026-06-14 release note: commit `38c837cee0bb28aee795c0fc3895044f1440f96a` was published by run `27483922931` as `core-71`; asset size `131,297,004` bytes, SHA256 `C750A785297AA22A2518B158BF334A1B1415C4E0739E01D0856C8BB5D450E15C`. Build the core from the real `%VSCODE_ROOT%\13_librustdesk_core` path, not from the app project's junction.
-
-> 2026-06-14 release note: commit `275b231e11aefd4a2e51050fc74fbdeba9c566bd` was published by run `27485061967` as `core-73`; asset size `131,471,532` bytes, SHA256 `E444D739EC958CD1485519FE0A712BFC1F074B60EEA65D71552E7E95A909A7B1`. The app downloaded this release and full HAP/package verification passed; runtime launch was blocked only by the phone lock screen.
-
-> 2026-06-14 source-mirror note: keep `rustdesk-master/src/harmony_bridge/harmony_bridge/core.rs` aligned with the active Harmony bridge for features that already work in the active path. The old copy's `send_clipboard_data()` must also build a `Clipboard` protobuf and call `session.send(Data::Message(...))`, not return `false`.
-
-> 2026-06-14 release note: commit `1b987914a2c27ace376e5af45a9c6790d84d40b4` was published by run `27486100946` as `core-74`; asset size `131,471,786` bytes, SHA256 `3755D448FBB1A583E7B5F7C3C6ADEC29D8AF0FBB7E5DD192251CD18A68C45D7C`. The app downloaded this release and full HAP/package verification/install passed as version `0.19.0`; runtime launch was blocked only by the phone lock screen.
-
-> 2026-06-15 中文说明：核心 C++ 源项目的 `rustdesk_bridge_session_send_chat` 声明/调用仍停留在旧一参版本，和 Rust ABI 四参签名不一致；本轮已同步为 `peer_id/message_type/content/timestamp` 四参并保留一参 fallback。同时核心 d.ts 补齐自定义服务器 `key` 参数，避免覆盖 app 副本。GitHub Actions run `27515510727` 已发布标签 `core-78`，asset `librustdesk_core.a` 为 `131,470,442` bytes，SHA256 `F68E575D593BBE331E931E582870CB72EAA810BF56B817045162C44FCAF91ACD`。
-
-> 2026-06-15 中文说明：远控会话命令不能只接入 NAPI 函数名。`session_switch_sides/session_record_screen/session_request_voice_call/session_close_voice_call` 等必须从 Rust C ABI 到 C++ NAPI 再到 ArkTS 都返回 bool，并在无活动会话时返回失败事件；录制状态、截图响应、语音呼叫状态也必须通过核心事件回流给 app。本地核心构建已通过，产物 `129,028,464` bytes，SHA256 `650E467B3ED67DD368A329FA25BCC024584880FB9B82902C3BE95D2852035E62`。GitHub Actions run `27516993020` 已成功发布 `core-79`，线上 asset `131,493,470` bytes，SHA256 `8BBB12AA93EE8703ABBED5BA6D411031AD78CE7FA6A71D7C407A0A350A8789F2`。
-
-> 2026-06-15 中文说明（已发布标签 `core-80`）：共享/被控链路不能只在 App 侧统计 native buffer。核心已新增 `incoming_screen_frame` latest-frame 缓存和 C ABI/NAPI：`updateIncomingScreenFrame/getIncomingScreenFrameMetadata/copyIncomingScreenFrame/clearIncomingScreenFrame`，App native `OH_AVScreenCapture_StartScreenCapture` 可把 mapped buffer payload 推进核心。`incomingReady` 仍保持 false，必须等 desktop server/video source 真接通后才能置 true。本地核心构建已通过，产物 `128,711,798` bytes，SHA256 `877AA1B9F27425D07B31193E0CABE6804FDE88AD5F8B622B0F5D52865CC54D5F`；GitHub Actions run `27526413545` 已成功发布 `core-80`，线上 asset `131,624,954` bytes，SHA256 `4047C8432BCA6C7F5FECBD4E1D6F55BE9717F28889B4699043A74138800E0E2A`。
-
-> 2026-06-15 中文说明（已发布标签 `core-81`）：共享启动不能只等 `incomingReady=true` 才启动 App 录屏，否则核心等首帧、App 等 ready 会形成死锁。本轮新增 `captureRequired` 快照字段：`main_start_service(true)` 返回 `captureRequired=true`、`incomingReady=false`，App 看到该状态后启动 native `OH_AVScreenCapture_StartScreenCapture` 并推首帧。核心 `scrap::common::ohos::Capturer` 现在从 incoming frame cache 读取最新帧，`Display::primary/all` 也返回可用 OHOS display 信息；但 desktop server/video source 未真正 ready 前仍不能把 `incomingReady` 置 true。本地核心构建已通过，产物 `128,894,588` bytes，SHA256 `2DC3B655664B756E255684D28FBA0CB3A9DEC14E6080EA4682FA26486ADF9B6D`；GitHub Actions run `27563925971` 已成功发布 `core-81`，线上 asset `131,631,706` bytes，SHA256 `64463fa57005cd5ccd99bafa9a40f18a9d605f8e90f5e199f92b38abfcdb4829`，release body 已补中文说明。11 App 使用本地同源核心构建 `0.22.6` 并完成验包、66 项审计、无线安装和干净 hilog 验证，下一步强制拉取线上 core-81 重测。
-
-> 注：`core-80/core-81` 条目是当时实现阶段的历史状态；当前状态以 2026-06-26 对齐审计为准：被控端画面已实测可传输，输入/操控按平台不支持处理，其他非画面能力仍需逐项验收。
+1. `README.md`：项目当前状态、发布规则、合规说明。
+2. `OFFICIAL_CORE_GAP.md`：上游核心能力对齐、未实现项、平台限制和验收边界。
+3. `CORE.md`：核心架构、可复现编译、桥接函数和构建问题。
+4. `CONNECTION_DEBUG_LOG.md`：连接问题逐轮排查记录。
+5. `WORKSPACE_PATHS.md`：Core 构建、测试、备份路径规范。
+6. `THIRD_PARTY_NOTICES.md`：第三方组件和合规提示。
 
 ## 文档列表
 
 | 文件 | 说明 |
 |------|------|
-| `CORE.md` | 核心架构、可复现编译、桥接函数完整说明（369个函数）、CMake链接、编译问题 |
-| `OFFICIAL_CORE_GAP.md` | RustDesk 官方核心对齐审计；列出已接通、未测、平台不支持和待补齐项 |
+| `CORE.md` | 核心架构、可复现编译、桥接函数、CMake 链接、编译问题 |
+| `OFFICIAL_CORE_GAP.md` | 上游核心对齐审计；列出已接通、未测、平台不支持和待补齐项 |
+| `THIRD_PARTY_NOTICES.md` | 第三方源码、依赖和再分发前的合规提示 |
 | `WORKSPACE_PATHS.md` | Core 构建/测试/备份路径规范；必须与 App 仓库同名文档保持一致 |
 | `LESSONS_LEARNED.md` | 经验教训和易复发构建问题 |
-| `BUILD_ARCHIVE.md` | 历史构建、脚本、Ubuntu路径和早期会话归档 |
+| `BUILD_ARCHIVE.md` | 历史构建、脚本、Ubuntu 路径和早期会话归档 |
 | `CONNECTION_DEBUG_LOG.md` | 连接问题逐轮排查记录 |
 | `UBUNTU_CROSS_COMPILE_GUIDE.md` | Ubuntu 交叉编译指南 |
-| `SESSION3_SUMMARY.md` | 会话3总结 |
+| `SESSION3_SUMMARY.md` | 会话 3 总结 |
 | `WINDOWS_SERVICE_OPTIMIZATION.md` | Windows 服务优化 |
-| `FUNCTION_LOGIC_AUDIT_2026-06-05.md` | 功能逻辑审计(6月5日) |
-| `FUNCTION_LOGIC_AUDIT_2026-06-06.md` | 功能逻辑审计(6月6日) |
-| `OHOS_CODE_MAP.md` | OHOS 专属代码分布说明，便于更新官方源码 |
+| `FUNCTION_LOGIC_AUDIT_2026-06-05.md` | 功能逻辑审计（6 月 5 日） |
+| `FUNCTION_LOGIC_AUDIT_2026-06-06.md` | 功能逻辑审计（6 月 6 日） |
+| `OHOS_CODE_MAP.md` | OHOS 专属代码分布说明，便于更新上游源码 |
 
 ## 核心修改流程
 
-1. 在本项目中修改 Rust/C++/TS 桥接代码
-2. 运行代码生成脚本（如需要）：`node scripts/regenerate_all.js`
-3. 本地验证编译：`powershell -File scripts/build_native_bridge.ps1`
-4. Git push 到远端
-5. GitHub Actions 自动用 Cargo `release` profile 构建，生成 `librustdesk_core.a`
-6. 下载 Release 产物，放入 HAP 项目 `entry/src/main/libs/arm64/`
-7. 同步 `cpp/` 文件到 HAP 项目 `entry/src/main/cpp/`（如桥接层有更新）
-
-> 发布前必须检查 `.a` 体积。当前 release 基准约 `132 MiB`；如果 GitHub Actions 产物接近 `568 MiB`，优先检查 workflow 是否误用了 Cargo `dev` profile 或保留了 debug 符号。
+1. 在本项目中修改 Rust/C++/TS 桥接代码。
+2. 如需要，运行代码生成脚本：`node scripts/regenerate_all.js`。
+3. 本地验证编译：
+   - Windows：`powershell -File scripts/build_native_bridge.ps1`
+   - Linux：`./scripts/build_native_bridge.sh <target-triple> release`
+4. 推送到远端。
+5. Linux 自动触发器或手动 workflow 启动构建。
+6. 构建启动后预留 `core-XXX` 标签。
+7. arm64 和 x86_64 两个产物都成功并通过校验后才创建 Release。
+8. 下载 Release 产物，放入 HAP 项目对应 ABI 目录。
+9. 如桥接层有更新，同步 `cpp/` 和 `cpp/types/` 到 HAP 项目。
 
 ## CI/CD 在线构建
 
-| 工作流 | 环境 | 触发方式 | 说明 |
-|--------|------|----------|------|
-| `build-core-windows.yml` | windows-2022 | push main / 手动 | 主构建，自动发布 `core-*` 标签 |
-| `build-core-linux.yml` | ubuntu-22.04 | 仅手动 | Linux 构建，发布 `core-linux-*` 标签，需设置 `OHOS_SDK_LINUX_ZIP_URL` 密钥 |
+| 工作流 | 环境 | 触发方式 | 输出 | 说明 |
+|--------|------|----------|------|------|
+| `build-core-windows.yml` | windows-2022 | 手动 | `librustdesk_core.a` + `librustdesk_core_x86_64.a` | Windows 双架构构建 |
+| `build-core-linux.yml` | ubuntu-22.04 | 手动，或由自动触发器调用 | `librustdesk_core.a` + `librustdesk_core_x86_64.a` | Linux 双架构构建，需 `OHOS_SDK_LINUX_ZIP_URL` |
+| `auto-linux-core-build.yml` | ubuntu-latest | main 更新后自动 | 无直接产物 | 自动触发 Linux 构建 |
+| `update-core-release-notes.yml` | ubuntu-latest | 构建成功后自动 | 更新 Release 说明 | 只改介绍内容，不改标签和名称 |
+| `cleanup-releases.yml` | ubuntu-latest | 手动 | 删除 Release 和 core 标签 | 用于重置编号 |
+
+## 发布规则
+
+- 当前只使用统一 `core-XXX` 标签。
+- 不再使用 `core-linux-*`。
+- 构建失败仍占用编号，但不创建 Release，不上传正式包。
+- Release 说明由 `.github/scripts/write-core-release-notes.sh` 生成。
+- `core-001` 使用首版详细介绍，后续版本使用更新说明模板。
+
+## 合规与品牌边界
+
+- 不使用“官方项目”“官方发布”“官方授权”等暗示上游背书的表述。
+- 文档中“上游”仅表示源码来源和兼容目标。
+- 发布静态库时应保留源码、构建脚本、补丁、第三方声明和许可证说明。
+- 上游许可证文本保留在 `rustdesk-master/LICENCE`。
+- 第三方说明见 `NOTICE` 和 `docs/THIRD_PARTY_NOTICES.md`。
 
 ## HAP 项目（11_Rustdesk_harmonyos）文档
 
-HAP 项目保留的文档聚焦于应用层：
+HAP 项目文档聚焦应用层：
 
 | 文件 | 说明 |
 |------|------|
-| `AGENT_MEMORY.md` | AI助手工作规则、经验库、用户偏好 |
-| `CORE.md` | 精简版：核心状态、HAP构建安装、运行验证清单 |
-| `DESIGN.md` | UI/构建/真机测试设计约束 |
-| `UI.md` | UI布局、图标、核心页卡片细节 |
-| `FILES.md` | 文件职责和外部依赖目录 |
-| `PROGRESS.md` | 功能进度、已完成事项、重点问题 |
-| `ISSUES.md` | 问题库和易复发坑 |
-| `GIT_PUBLISH.md` | GitHub发布说明 |
+| `AGENT_MEMORY.md` | AI 助手工作规则、经验库、用户偏好 |
+| `CORE.md` | 核心状态、HAP 构建安装、运行验证清单 |
+| `docs/AGENT_HANDOFF.md` | 应用层交接摘要 |
+
+HAP 项目中的核心版本、包体积和运行状态应引用当前 Release 和本仓库最新文档，不再引用旧测试包编号作为当前状态。
