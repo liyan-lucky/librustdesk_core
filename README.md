@@ -1,14 +1,21 @@
 # librustdesk_core
 
-RustDesk HarmonyOS 原生核心静态库构建器。从 RustDesk 1.4.7 上游源码通过 OHOS 交叉编译构建 `librustdesk_core.a`，并生成完整的 C++ NAPI 桥接层，供 HarmonyOS ArkTS 应用使用。
+> 免责声明：本项目为第三方非官方 HarmonyOS / OpenHarmony 适配项目，不属于上游项目官方发布、认可、赞助或背书的项目。上游项目名称和相关标识仅用于说明源码来源和兼容目标，相关权利归其各自权利人所有。
+>
+> 许可证与源码说明：本仓库包含基于上游源码的 HarmonyOS 适配、桥接和构建脚本。使用、修改、分发本仓库源码或发布产物时，请同时遵守上游许可证以及相关第三方依赖许可证要求。第三方说明见 `NOTICE` 与 `docs/THIRD_PARTY_NOTICES.md`。
 
-> 2026-06-21 23:38 集成候选：arm64 静态库 `131,091,732` bytes，SHA256 `E4614BAE4EDB54F2C0A2CFECE96A2E99D558B6900693B2B3A9B08B8F3DCD5D5D`；x86_64 `130,090,572` bytes，SHA256 `DB0283F44EA5E5D09A23D1756929B171F28FF2A602D595941902A18ECE5F17DD`。两架构均为 2026-06-21 本地同源码构建，已装入 App 最终 HAP 并通过签名、ABI、100 轮功能审计和真机冷启动验证。华为被控端输入注入按用户决定搁置。
-
-> 2026-06-22 线上收口：commit `a7f77950d108f57b7f871eddf2c360db114d1c6d`、Windows run `27920089950`、Release/tag `core-34`。arm64 asset `133,495,306` bytes / SHA256 `90A28361F8A7801E66B0854334490F6B340BEA26C95E3BC4C666D6C665078337`；x86_64 asset `131,336,988` bytes / SHA256 `E587465E245DDA662A30110FC3FDEA139A2962295A4D73DCAAEEC9384FF18CE4`。两份 archive、关键导出符号及最终线上 HAP 的双架构 CoreBuildInfo 均已复验；同一 HAP 已在 arm64 真机和 x86_64 虚拟机冷启动通过。
-
-> 2026-06-26 状态校准：HarmonyOS 作为被控端的画面传输已由真机实测跑通；被控端远程输入/操控因当前鸿蒙平台能力限制不作为支持项，相关输入注入符号仅保留兼容和诊断边界；文件传输、音频、语音、录制、截图、完整菜单状态等仍需逐项端到端验证。官方核心对齐清单见 `docs/OFFICIAL_CORE_GAP.md`。
+RustDesk HarmonyOS 原生核心静态库构建器。从 RustDesk 1.4.7 上游源码通过 OHOS 交叉编译构建 `librustdesk_core.a`，并生成 C++ NAPI 桥接层，供 HarmonyOS ArkTS 应用集成使用。
 
 [English](README_EN.md)
+
+## 当前状态
+
+- 当前发布标签统一使用 `core-001`、`core-002`、`core-003` 形式。
+- Windows 和 Linux 构建共用同一套版本编号。
+- 构建启动后立即预留版本号；失败也会保留标签占号。
+- 只有 arm64 和 x86_64 两个产物都完整生成并通过校验，才创建 Release 并上传正式包。
+- Release 说明只更新介绍内容，不改标签和 Release 名称。
+- Linux 可由 main 分支更新自动触发，也可手动触发；Windows 保持手动触发。
 
 ## 架构
 
@@ -20,7 +27,7 @@ librustdesk_bridge.so
     -> Rust C ABI (native_rust_core/)
 librustdesk_core.a
     -> rustdesk_harmony_bridge
-    -> RustDesk 官方 session/core (rustdesk-master/)
+    -> RustDesk 上游 session/core (rustdesk-master/)
 RustDesk 服务器 / 对端
 ```
 
@@ -34,120 +41,85 @@ RustDesk 服务器 / 对端
 | `rdev-fork/` | rdev 输入库 fork，含 OHOS 支持 |
 | `cpp/` | C++ NAPI 桥接层（abi.h, loader.cpp, CMakeLists.txt） |
 | `scripts/` | 构建脚本和代码生成器 |
-
-## 关键文件
-
-### Rust 桥接层（`native_rust_core/`）
-
-| 文件 | 说明 |
-|------|------|
-| `src/bridge_api.rs` | C FFI 导出（约 2872 行），所有 `rustdesk_bridge_*` 函数 |
-| `src/bridge_state.rs` | 桥接状态快照管理（BridgeSnapshot, 事件队列） |
-| `src/lib.rs` | crate 入口 |
-| `Cargo.toml` | `crate-type = ["staticlib"]`，依赖 rustdesk 1.4.7 |
-| `build.rs` | 为 OHOS 目标添加 `-Wl,-z,notext` 链接参数 |
-
-### C++ NAPI 桥接层（`cpp/`）
-
-| 文件 | 说明 |
-|------|------|
-| `rustdesk_bridge_abi.h` | C ABI 头文件，声明所有 `rustdesk_bridge_*` 函数 |
-| `rustdesk_bridge_loader.cpp` | NAPI 模块加载器，将 C ABI 封装为 NAPI 导出 |
-| `ohos_stubs.cpp` | OHOS 平台桩（xcb, OH_TimeService, qsort_r） |
-| `CMakeLists.txt` | 将 `librustdesk_core.a` 链接进 `librustdesk_bridge.so` |
-| `types/librustdesk_bridge/index.d.ts` | TypeScript 类型声明 |
-
-### 代码生成脚本（`scripts/`）
-
-| 脚本 | 说明 |
-|------|------|
-| `generate_bridge_api.js` | 从 core.rs 生成 bridge_api.rs |
-| `generate_cpp_bridge.js` | 从 core.rs 生成 ABI 头文件和 NAPI loader |
-| `generate_ts_bridge.js` | 从 core.rs 生成 TS 类型声明 |
-| `regenerate_all.js` | 一键重新生成所有桥接代码 |
-| `dedup_abi.js` | ABI 头文件声明去重 |
-| `dedup_loader.js` | NAPI 注册去重 |
-| `dedup_loader_funcs.js` | NAPI 函数定义去重 |
-| `rename_mapping.js` | OHOS 名称到官方 wire_ 名称映射 |
-| `build_native_bridge.ps1` | Windows 交叉编译构建脚本 |
-| `build_native_bridge.sh` | Linux/macOS 构建脚本 |
+| `docs/` | 架构、差异、合规和验收文档 |
 
 ## 构建
 
-### Windows（主要）
+### Windows
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File scripts\build_native_bridge.ps1
 ```
 
-Windows 脚本在 Cargo 运行前准备目标静态依赖。冷构建时会编译 `libsodium`、下载编译 `libvpx` `1.15.2`、下载编译 `libyuv` 修订版 `0faf8dd0e004520a61a603a4d2996d5ecc80dc3f`，并安装到 `VCPKG_INSTALLED_ROOT\arm64-linux`。对于 `libvpx`，仅构建 `libvpx.a` make 目标并手动安装公共头文件；不要运行默认的 `make && make install`，因为那会同时构建未使用的 `libvpxrc.a`（来自 C++ RTC 速率控制源码 `vp9/ratectrl_rtc.cc`, `vp8/vp8_ratectrl_rtc.cc`）。精简版在线 SDK 可能不包含兼容的 libc++ 头文件，MSYS2 libc++ 也不是 OHOS SDK clang 的安全回退。`libyuv` 在 SDK libc++ include 目录存在时可以使用它，但构建不能依赖 MSYS2 libc++ 头文件。
-
 ### Linux
 
 ```bash
 ./scripts/build_native_bridge.sh aarch64-unknown-linux-ohos release
+./scripts/build_native_bridge.sh x86_64-unknown-linux-ohos release
 ```
 
-### CI/CD
+## CI/CD
 
-**Windows 在线构建**：`.github/workflows/build-core-windows.yml`
+### Windows 在线构建
+
+- Workflow：`.github/workflows/build-core-windows.yml`
 - 运行环境：`windows-2022`
-- Rust 工具链：1.88.0
-- 使用 Cargo `release` profile 从 `native_rust_core/Cargo.toml` 构建
-- 拒绝体积不在 `100,000,000` ~ `250,000,000` bytes 范围内的可疑产物
-- 输出：`librustdesk_core.a` 上传为 release asset
+- 触发方式：手动触发（`workflow_dispatch`）
+- 目标平台：`aarch64-unknown-linux-ohos` + `x86_64-unknown-linux-ohos`
+- 输出：`librustdesk_core.a` + `librustdesk_core_x86_64.a`
 
-**Linux 在线构建**：`.github/workflows/build-core-linux.yml`
+### Linux 在线构建
+
+- Workflow：`.github/workflows/build-core-linux.yml`
+- 自动触发器：`.github/workflows/auto-linux-core-build.yml`
 - 运行环境：`ubuntu-22.04`
-- Rust 工具链：1.88.0
-- 仅手动触发（`workflow_dispatch`），不自动触发
-- 使用与 Windows 构建相同的依赖和编译逻辑
-- 需要设置仓库密钥 `OHOS_SDK_LINUX_ZIP_URL`（Linux 版 OHOS Native SDK 下载地址）
+- 触发方式：main 更新后自动触发，也支持手动触发
+- 目标平台：`aarch64-unknown-linux-ohos` + `x86_64-unknown-linux-ohos`
+- 输出：`librustdesk_core.a` + `librustdesk_core_x86_64.a`
+- 需要仓库密钥：`OHOS_SDK_LINUX_ZIP_URL`
 
-### 产物
+### Release 说明
 
-- 本地标准静态库：`%VSCODE_ROOT%\99_Temp\librustdesk_core\cargo_target\<target-triple>\release\librustdesk_harmony_bridge.a`
-- 仓库内 `native_rust_core/target/` 属于可再生成缓存，2026-06-21 清理后不再保留。
-- 复制到 HAP 项目时重命名为 `librustdesk_core.a`
+- 模板脚本：`.github/scripts/write-core-release-notes.sh`
+- 自动更新：`.github/workflows/update-core-release-notes.yml`
+- `core-001` 使用首版详细说明。
+- `core-002` 以后使用更新说明模板。
+- 仅更新 Release 介绍内容，不修改标签和 Release 名称。
+
+## 发布产物
+
+| 文件 | 架构 | 用途 |
+|------|------|------|
+| `librustdesk_core.a` | arm64-v8a | HarmonyOS 真机调试和实机集成 |
+| `librustdesk_core_x86_64.a` | x86_64 | HarmonyOS / OpenHarmony 虚拟设备调试 |
+
+两个产物必须同时存在并通过体积校验后才会创建正式 Release。构建中间任意步骤失败时，只保留版本标签占号，不创建 Release，也不上传正式发布包。
 
 ## 在 HAP 项目中使用
 
-1. 从 [GitHub Releases](https://github.com/liyan-lucky/librustdesk_core/releases) 下载 `librustdesk_core.a`
-2. 复制到 `11_Rustdesk_harmonyos/entry/src/main/libs/arm64/librustdesk_core.a`
-3. 复制 `cpp/` 文件到 `11_Rustdesk_harmonyos/entry/src/main/cpp/`（如桥接层有更新）
-4. 复制 `cpp/types/` 到 `11_Rustdesk_harmonyos/entry/src/main/cpp/types/`（如 TS 声明有更新）
-5. 构建 HAP：`scripts\build_hap.bat`
+1. 从 GitHub Releases 下载对应架构静态库。
+2. 复制到 HAP 工程对应 ABI 目录，例如 `entry/src/main/libs/<ABI>/`。
+3. 与当前仓库中的 C++ NAPI 桥接层、ArkTS 类型定义和 App 侧调用逻辑配套使用。
+4. 如桥接层有更新，同步复制 `cpp/` 和 `cpp/types/`。
 
-## 函数名映射
+## 当前能力边界
 
-OHOS 对所有 C FFI 函数使用 `rustdesk_bridge_*` 前缀。部分名称与官方 `wire_*` 名称不同：
+- 出站远控会话使用真实上游会话路径，通过 `on_rgba -> publish_real_video_frame -> video-frame` 发布视频。
+- OHOS 出站观看端视频解码使用 `libvpx` 软解 VP8/VP9 加 `libyuv` YUV 转 RGBA。
+- HarmonyOS 入站/被控端画面传输已由真机实测跑通。
+- HarmonyOS 入站/被控端远程输入/操控当前按平台不支持处理：不要把输入注入作为发布阻塞项，也不要在 UI 或状态中宣称可控。
+- 文件传输、音频、语音、录制、截图、远程光标、完整菜单状态等非画面能力仍按“未完成端到端验证”处理。
 
-| OHOS 名称 | 官方名称 | 说明 |
-|-----------|---------|------|
-| connect_to_peer | session_start | NAPI 保留旧名称，调用新 C 函数 |
-| set_incoming_service_enabled | main_start_service | NAPI 保留旧名称 |
-| session_alternative_codecs | session_get_alternative_codecs | 重命名以匹配官方 |
-| main_use_texture_render | main_get_use_texture_render | 重命名以匹配官方 |
+详细能力差异和验收边界见：`docs/OFFICIAL_CORE_GAP.md`。
 
-完整映射见 `scripts/rename_mapping.js`。
+## 合规说明
 
-## 上游兼容性
+- 本项目不是上游官方项目。
+- 上游项目名称仅用于说明源码来源和兼容目标。
+- 发布静态库时，应同时保留对应源码、构建脚本、补丁、第三方声明和许可证说明。
+- 第三方声明见：`NOTICE`、`docs/THIRD_PARTY_NOTICES.md`。
+- 上游许可证文本保留在：`rustdesk-master/LICENCE`。
 
-- 当前版本：RustDesk 1.4.7
-- OHOS 目标：`aarch64-unknown-linux-ohos`
-- 关键 OHOS 适配：
-  - `cfg(target_env = "ohos")` 排除桌面 Linux 依赖
-  - `scrap` 不含 wayland/gtk/dbus 特性
-  - `arboard` 不含 wayland-data-control 特性
-  - 独立的 `rendezvous_mediator_ohos.rs` 用于局域网发现
-  - `harmony_bridge/core.rs` 作为会话入口（非 flutter_ffi.rs）
+## 历史记录
 
-## 当前视频和被控服务状态
-
-- 出站远控会话使用真实 RustDesk 会话路径，通过 `on_rgba -> publish_real_video_frame -> video-frame` 发布视频。
-- OHOS 出站观看端视频解码使用 `libvpx` 软解 VP8/VP9 加 `libyuv` YUV 转 RGBA。`codec_ohos.rs` 不得声明 VP9 支持，除非 `handle_video_frame()` 能解码帧并调用 `GoogleImage::to()`。
-- 保持 libvpx VP8/VP9 编码器启用，除非重新设计 `scrap` 绑定。`scrap/src/bindings/vpx_ffi.h` 包含 `vp8cx.h` 和 `vpx_encoder.h`，`common/vpxcodec.rs` 引用编码器 API。仅跳过 `libvpxrc.a`；不要禁用 `scrap` 使用的公共 C API 对应的编码器。
-- HarmonyOS 入站/被控端画面传输已由真机实测跑通：手机端采集画面进入核心并可在 Windows 端看到真实持续刷新画面。
-- HarmonyOS 入站/被控端远程输入/操控当前按平台不支持处理：不要把输入注入作为发布阻塞项，也不要在 UI 或状态中宣称可控；相关符号仅用于兼容、诊断和明确失败边界。
-- `main_start_service(true)` 的状态必须区分画面链路和输入链路：画面链路可 ready 时允许上报共享可用，但输入能力必须单独标记为 unsupported/false，不能因为 rendezvous/options 刷新或 native buffer 有帧就误报完整被控能力。
-- 文件传输、音频、语音、录制、截图、远程光标、完整菜单状态等非画面能力仍按“未完成端到端验证”处理，补齐顺序和验收标准见 `docs/OFFICIAL_CORE_GAP.md`。
+旧的测试包编号、历史 SHA、历史包大小和历史 Release 信息不再作为当前主说明展示。当前有效发布规则以本 README 的 `core-XXX` 统一编号规则和 CI/CD 说明为准。
