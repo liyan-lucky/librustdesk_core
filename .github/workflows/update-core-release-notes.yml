@@ -54,7 +54,7 @@ jobs:
         run: |
           bash .github/scripts/write-core-release-notes.sh release-notes.md
 
-      - name: Update release title and notes
+      - name: Update release notes only
         if: steps.release.outputs.tag != ''
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -62,5 +62,4 @@ jobs:
           set -euo pipefail
           gh release edit "${{ steps.release.outputs.tag }}" \
             --repo "${{ github.repository }}" \
-            --title "RustDesk HarmonyOS 原生核心 ${{ steps.release.outputs.number }}" \
             --notes-file release-notes.md
