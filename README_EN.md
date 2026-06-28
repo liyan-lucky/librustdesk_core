@@ -2,7 +2,7 @@
 
 > Disclaimer: This is an unofficial third-party HarmonyOS / OpenHarmony adaptation project. It is not affiliated with, endorsed by, sponsored by, or officially maintained by the upstream project. Upstream project names and related marks are used only to identify source origin and compatibility targets.
 >
-> License and source notice: this repository contains HarmonyOS adaptation code, bridge code, build scripts, and upstream-derived source. When using, modifying, distributing, or redistributing this repository or its build outputs, review and comply with the upstream license and third-party dependency licenses. See `NOTICE` and `docs/THIRD_PARTY_NOTICES.md`.
+> License and source notice: this repository contains HarmonyOS adaptation code, bridge code, build scripts, and upstream-derived source. When using, modifying, distributing, or redistributing this repository or its build outputs, review and comply with the upstream license and third-party dependency licenses. See `LICENSE_NOTICE.md`, `COPYING`, `NOTICE`, and `docs/THIRD_PARTY_NOTICES.md`.
 
 RustDesk HarmonyOS native core static library builder. It builds `librustdesk_core.a` from the RustDesk 1.4.7 upstream source through OHOS cross-compilation and provides a C++ NAPI bridge layer for HarmonyOS ArkTS applications.
 
@@ -117,6 +117,7 @@ See `docs/OFFICIAL_CORE_GAP.md` for detailed capability gaps and validation boun
 - This is not an upstream official project.
 - Upstream project names are used only to identify source origin and compatibility targets.
 - Static-library redistribution should preserve the corresponding source, build scripts, patches, third-party notices, and license information.
+- License entry points: `LICENSE_NOTICE.md`, `COPYING`.
 - Third-party notices: `NOTICE`, `docs/THIRD_PARTY_NOTICES.md`.
 - Upstream license text: `rustdesk-master/LICENCE`.
 
