@@ -18,16 +18,20 @@
 ## 推荐阅读顺序
 
 1. `README.md`：项目当前状态、发布规则、合规说明。
-2. `OFFICIAL_CORE_GAP.md`：上游核心能力对齐、未实现项、平台限制和验收边界。
-3. `CORE.md`：核心架构、可复现编译、桥接函数和构建问题。
-4. `CONNECTION_DEBUG_LOG.md`：连接问题逐轮排查记录。
-5. `WORKSPACE_PATHS.md`：Core 构建、测试、备份路径规范。
-6. `THIRD_PARTY_NOTICES.md`：第三方组件和合规提示。
+2. `LICENSE_NOTICE.md`：许可证入口、源码来源、再分发说明和非官方声明。
+3. `OFFICIAL_CORE_GAP.md`：上游核心能力对齐、未实现项、平台限制和验收边界。
+4. `CORE.md`：核心架构、可复现编译、桥接函数和构建问题。
+5. `CONNECTION_DEBUG_LOG.md`：连接问题逐轮排查记录。
+6. `WORKSPACE_PATHS.md`：Core 构建、测试、备份路径规范。
+7. `THIRD_PARTY_NOTICES.md`：第三方组件和合规提示。
 
 ## 文档列表
 
 | 文件 | 说明 |
 |------|------|
+| `LICENSE_NOTICE.md` | 许可证入口、源码来源、再分发说明和非官方声明 |
+| `COPYING` | 根目录许可证入口，指向上游许可证文本和合规说明 |
+| `NOTICE` | 项目非官方声明和源码来源说明 |
 | `CORE.md` | 核心架构、可复现编译、桥接函数、CMake 链接、编译问题 |
 | `OFFICIAL_CORE_GAP.md` | 上游核心对齐审计；列出已接通、未测、平台不支持和待补齐项 |
 | `THIRD_PARTY_NOTICES.md` | 第三方源码、依赖和再分发前的合规提示 |
@@ -64,7 +68,7 @@
 | `build-core-linux.yml` | ubuntu-22.04 | 手动，或由自动触发器调用 | `librustdesk_core.a` + `librustdesk_core_x86_64.a` | Linux 双架构构建，需 `OHOS_SDK_LINUX_ZIP_URL` |
 | `auto-linux-core-build.yml` | ubuntu-latest | main 更新后自动 | 无直接产物 | 自动触发 Linux 构建 |
 | `update-core-release-notes.yml` | ubuntu-latest | 构建成功后自动 | 更新 Release 说明 | 只改介绍内容，不改标签和名称 |
-| `cleanup-releases.yml` | ubuntu-latest | 手动 | 删除 Release 和 core 标签 | 用于重置编号 |
+| `cleanup-releases.yml` | ubuntu-latest | 手动 | 删除 Release、core 标签和旧 Actions 运行记录 | 用于重置编号和清理历史记录 |
 
 ## 发布规则
 
@@ -79,6 +83,7 @@
 - 不使用“官方项目”“官方发布”“官方授权”等暗示上游背书的表述。
 - 文档中“上游”仅表示源码来源和兼容目标。
 - 发布静态库时应保留源码、构建脚本、补丁、第三方声明和许可证说明。
+- 许可入口见 `LICENSE_NOTICE.md` 和 `COPYING`。
 - 上游许可证文本保留在 `rustdesk-master/LICENCE`。
 - 第三方说明见 `NOTICE` 和 `docs/THIRD_PARTY_NOTICES.md`。
 
