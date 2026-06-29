@@ -120,8 +120,8 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.HARMONYOS_SDK_TOKEN }}
           SDK_REPO: liyan-lucky/HarmonyOS_SDK_Tools
-          SDK_TAG: linux_command_line_tool_6.1.1
-          SDK_ASSET: linux-harmonyos-command-line-tool-full.7z
+          SDK_TAG: linux_ohos_sdk_min_6.1.1
+          SDK_ASSET: linux-ohos-sdk-min.zip
         run: |
           set -euo pipefail
           if [ -z "${GH_TOKEN:-}" ]; then
