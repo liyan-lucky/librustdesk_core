@@ -1,4 +1,4 @@
-name: Build librustdesk_core.a (Windows)
+name: 构建 HarmonyOS 核心库（Windows）
 
 on:
   workflow_dispatch:
@@ -8,13 +8,13 @@ permissions:
 
 jobs:
   reserve_release_number:
-    name: Reserve release number
+    name: 预留发布版本号
     runs-on: ubuntu-latest
     outputs:
       release_number: ${{ steps.reserve.outputs.release_number }}
       tag: ${{ steps.reserve.outputs.tag }}
     steps:
-      - name: Reserve next core tag
+      - name: 预留下一个核心库标签
         id: reserve
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -47,7 +47,7 @@ jobs:
           echo "tag=$tag" >> "$GITHUB_OUTPUT"
 
   build:
-    name: Build core on Windows (${{ matrix.target }})
+    name: Windows 构建核心库（${{ matrix.target }}）
     needs: reserve_release_number
     runs-on: windows-2022
     timeout-minutes: 120
@@ -78,15 +78,15 @@ jobs:
       RELEASE_ARTIFACT_MAX_BYTES: "250000000"
 
     steps:
-      - name: Checkout
+      - name: 检出代码
         uses: actions/checkout@v4
 
-      - name: Install Rust toolchain
+      - name: 安装 Rust 工具链
         uses: dtolnay/rust-toolchain@1.88.0
         with:
           targets: aarch64-unknown-linux-ohos,x86_64-unknown-linux-ohos
 
-      - name: Install MSYS2
+      - name: 安装 MSYS2
         uses: msys2/setup-msys2@v2
         with:
           install: >-
@@ -98,20 +98,20 @@ jobs:
             libtool
             pkgconf
 
-      - name: Prepare build directories
+      - name: 准备构建目录
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force -Path "$env:RUSTDESK_HARMONY_BUILD_DIR" | Out-Null
           New-Item -ItemType Directory -Force -Path "$env:VCPKG_ROOT" | Out-Null
           New-Item -ItemType Directory -Force -Path "$env:VCPKG_INSTALLED_ROOT" | Out-Null
 
-      - name: Download OpenHarmony SDK
+      - name: 下载 HarmonyOS SDK
         shell: pwsh
         env:
           GH_TOKEN: ${{ secrets.HARMONYOS_SDK_TOKEN }}
           SDK_REPO: liyan-lucky/HarmonyOS_SDK_Tools
-          SDK_TAG: windows_command_line_tool_6.1.1
-          SDK_ASSET: windows-harmonyos-command-line-tool-full.7z
+          SDK_TAG: windows_ohos_sdk_min_6.1.1
+          SDK_ASSET: windows-ohos-sdk-min.zip
         run: |
           if ([string]::IsNullOrWhiteSpace($env:GH_TOKEN)) {
             throw "Missing repository secret: HARMONYOS_SDK_TOKEN"
@@ -175,7 +175,7 @@ jobs:
           Write-Host "Native dir: $nativeDir"
           Get-ChildItem "$nativeDir" | Select-Object Name
 
-      - name: Cache Cargo dependencies
+      - name: 缓存 Cargo 依赖
         uses: actions/cache@v4
         with:
           path: |
@@ -186,7 +186,7 @@ jobs:
           restore-keys: |
             windows-ohos-cargo-${{ matrix.target }}-
 
-      - name: Prepare libsodium-sys source
+      - name: 准备 libsodium-sys 源码
         shell: pwsh
         run: |
           $registrySrc = Join-Path $env:CARGO_HOME "registry\src\manual"
@@ -199,7 +199,7 @@ jobs:
             tar -xzf $crateFile -C $registrySrc
           }
 
-      - name: Build libopus for OHOS
+      - name: 编译 libopus
         shell: pwsh
         run: |
           $opusVersion = "1.5.2"
@@ -285,7 +285,7 @@ jobs:
           Write-Host "libopus prepared:"
           Get-Item $header, $libA | Format-List FullName,Length
 
-      - name: Build librustdesk_core.a
+      - name: 编译 librustdesk_core.a
         shell: pwsh
         run: |
           Write-Host "=== Environment ==="
@@ -318,7 +318,7 @@ jobs:
           $releaseFile = if ($env:TARGET_TRIPLE -eq "aarch64-unknown-linux-ohos") { "librustdesk_core.a" } else { "librustdesk_core_x86_64.a" }
           Copy-Item -LiteralPath $builtLib -Destination ".\$releaseFile" -Force
 
-      - name: Upload debug logs
+      - name: 上传调试日志
         if: always()
         uses: actions/upload-artifact@v4
         with:
@@ -333,7 +333,7 @@ jobs:
             _build/opus-*-build/CMakeFiles/CMakeOutput.log
           if-no-files-found: ignore
 
-      - name: Validate final artifact
+      - name: 校验最终产物
         shell: pwsh
         run: |
           $releaseFile = if ($env:TARGET_TRIPLE -eq "aarch64-unknown-linux-ohos") { "librustdesk_core.a" } else { "librustdesk_core_x86_64.a" }
@@ -353,14 +353,14 @@ jobs:
             throw "Unexpected $releaseFile size: $($artifactItem.Length) bytes. Expected release artifact between $minBytes and $maxBytes bytes; check Cargo profile before publishing."
           }
 
-      - name: Upload Actions artifact
+      - name: 上传构建产物
         uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.artifact_name }}
           path: ${{ matrix.release_file }}
           if-no-files-found: error
 
-      - name: Check release file
+      - name: 检查发布文件
         shell: pwsh
         run: |
           $releaseFile = if ($env:TARGET_TRIPLE -eq "aarch64-unknown-linux-ohos") { "librustdesk_core.a" } else { "librustdesk_core_x86_64.a" }
@@ -370,25 +370,25 @@ jobs:
           Get-FileHash ".\$releaseFile" -Algorithm SHA256
 
   release:
-    name: Publish dual-architecture core
+    name: 发布双架构核心库
     needs: [reserve_release_number, build]
     runs-on: ubuntu-latest
     if: needs.build.result == 'success'
 
     steps:
-      - name: Download arm64 artifact
+      - name: 下载 arm64 产物
         uses: actions/download-artifact@v4
         with:
           name: librustdesk_core
           path: ./release-assets
 
-      - name: Download x86_64 artifact
+      - name: 下载 x86_64 产物
         uses: actions/download-artifact@v4
         with:
           name: librustdesk_core_x86_64
           path: ./release-assets
 
-      - name: Validate release assets
+      - name: 校验 Release 产物
         run: |
           set -euo pipefail
           ls -la ./release-assets/
@@ -409,7 +409,7 @@ jobs:
             sha256sum "$f"
           done
 
-      - name: Create GitHub Release
+      - name: 创建 GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ needs.reserve_release_number.outputs.tag }}
