@@ -1,18 +1,18 @@
-name: Test HarmonyOS SDK token
+name: 测试 HarmonyOS SDK Token
 
 on:
   workflow_dispatch:
     inputs:
       sdk_repo:
-        description: 'SDK repository owner/name'
+        description: 'SDK 仓库 owner/name'
         required: true
         default: 'liyan-lucky/HarmonyOS_SDK_Tools'
       sdk_tag:
-        description: 'SDK release tag to check'
+        description: '要检查的 SDK Release 标签'
         required: true
         default: 'linux_command_line_tool_6.1.1'
       sdk_asset:
-        description: 'SDK asset name to check'
+        description: '要检查的 SDK 资产文件名'
         required: true
         default: 'linux-harmonyos-command-line-tool-full.7z'
 
@@ -21,32 +21,32 @@ permissions:
 
 jobs:
   test-token:
-    name: Test SDK token access
+    name: 测试 SDK Token 访问权限
     runs-on: ubuntu-latest
     steps:
-      - name: Check HARMONYOS_SDK_TOKEN is configured
+      - name: 检查 HARMONYOS_SDK_TOKEN 是否已配置
         env:
           GH_TOKEN: ${{ secrets.HARMONYOS_SDK_TOKEN }}
         run: |
           set -euo pipefail
           if [ -z "${GH_TOKEN:-}" ]; then
-            echo "ERROR: Missing repository secret: HARMONYOS_SDK_TOKEN"
-            echo "Add it in librustdesk_core -> Settings -> Secrets and variables -> Actions."
+            echo "错误：缺少仓库 Secret：HARMONYOS_SDK_TOKEN"
+            echo "请添加到 librustdesk_core -> Settings -> Secrets and variables -> Actions。"
             exit 1
           fi
-          echo "HARMONYOS_SDK_TOKEN is present."
+          echo "HARMONYOS_SDK_TOKEN 已存在。"
 
-      - name: Check SDK repository access
+      - name: 检查 SDK 私有仓库访问权限
         env:
           GH_TOKEN: ${{ secrets.HARMONYOS_SDK_TOKEN }}
           SDK_REPO: ${{ inputs.sdk_repo }}
         run: |
           set -euo pipefail
-          echo "Checking repository access: $SDK_REPO"
+          echo "检查仓库访问权限：$SDK_REPO"
           gh repo view "$SDK_REPO" --json nameWithOwner,visibility,defaultBranchRef \
             --jq '"repo=\(.nameWithOwner) visibility=\(.visibility) default_branch=\(.defaultBranchRef.name)"'
 
-      - name: Check SDK release and asset
+      - name: 检查 SDK Release 和资产文件
         env:
           GH_TOKEN: ${{ secrets.HARMONYOS_SDK_TOKEN }}
           SDK_REPO: ${{ inputs.sdk_repo }}
@@ -54,8 +54,8 @@ jobs:
           SDK_ASSET: ${{ inputs.sdk_asset }}
         run: |
           set -euo pipefail
-          echo "Checking release: $SDK_TAG"
-          echo "Required asset: $SDK_ASSET"
+          echo "检查 Release：$SDK_TAG"
+          echo "需要的资产文件：$SDK_ASSET"
 
           gh release view "$SDK_TAG" --repo "$SDK_REPO" --json tagName,name,isDraft,isPrerelease,assets \
             --jq '"tag=\(.tagName) name=\(.name) draft=\(.isDraft) prerelease=\(.isPrerelease)\nassets:\n" + ([.assets[] | "- \(.name) size=\(.size) contentType=\(.contentType)"] | join("\n"))'
@@ -64,9 +64,9 @@ jobs:
             --jq --arg asset "$SDK_ASSET" '[.assets[] | select(.name == $asset)] | length')
 
           if [ "$found" != "1" ]; then
-            echo "ERROR: SDK asset was not found in release."
-            echo "Expected: $SDK_ASSET"
+            echo "错误：Release 中没有找到指定 SDK 资产文件。"
+            echo "期望文件：$SDK_ASSET"
             exit 1
           fi
 
-          echo "OK: SDK asset exists and token can read it."
+          echo "通过：Token 可以读取 SDK 仓库、Release 和指定资产文件。"
