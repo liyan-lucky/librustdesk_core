@@ -1,10 +1,10 @@
-name: Cleanup all releases, core tags, and workflow runs
+name: 清理所有 Release、核心标签和流程记录
 
 on:
   workflow_dispatch:
     inputs:
       confirm:
-        description: 'Type ALL or DELETE_ALL_RELEASES to delete every GitHub Release, all core-* tags, and old Actions workflow runs.'
+        description: '输入 ALL 或 DELETE_ALL_RELEASES 删除所有 GitHub Release、core-* 标签和旧 Actions 流程记录。'
         required: true
         default: 'ALL'
         type: string
@@ -15,20 +15,20 @@ permissions:
 
 jobs:
   cleanup:
-    name: Delete all releases, core tags, and workflow runs
+    name: 删除所有 Release、核心标签和流程记录
     runs-on: ubuntu-latest
     steps:
-      - name: Verify confirmation
+      - name: 校验确认文本
         run: |
           set -euo pipefail
           confirm="${{ inputs.confirm }}"
           if [ "$confirm" != "DELETE_ALL_RELEASES" ] && [ "$confirm" != "ALL" ] && [ "$confirm" != "all" ]; then
-            echo "Confirmation did not match. Nothing will be deleted."
-            echo "Please type ALL or DELETE_ALL_RELEASES."
+            echo "确认文本不匹配，不会删除任何内容。"
+            echo "请输入 ALL 或 DELETE_ALL_RELEASES。"
             exit 1
           fi
 
-      - name: Delete releases
+      - name: 删除 Release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
@@ -36,18 +36,18 @@ jobs:
           mapfile -t release_tags < <(gh release list --limit 1000 --json tagName --jq '.[].tagName')
 
           if [ "${#release_tags[@]}" -eq 0 ]; then
-            echo "No releases found."
+            echo "没有找到 Release。"
           else
-            printf 'Releases to delete:\n'
+            printf '将删除以下 Release:\n'
             printf ' - %s\n' "${release_tags[@]}"
 
             for tag in "${release_tags[@]}"; do
-              echo "Deleting release and tag: $tag"
+              echo "删除 Release 和标签：$tag"
               gh release delete "$tag" --cleanup-tag --yes || true
             done
           fi
 
-      - name: Delete residual core tags
+      - name: 删除残留核心标签
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
@@ -59,18 +59,18 @@ jobs:
           )
 
           if [ "${#tag_refs[@]}" -eq 0 ]; then
-            echo "No residual core release tags found."
+            echo "没有找到残留核心发布标签。"
           else
-            printf 'Residual core release tags to delete:\n'
+            printf '将删除以下残留核心发布标签：\n'
             printf ' - %s\n' "${tag_refs[@]}"
 
             for tag in "${tag_refs[@]}"; do
-              echo "Deleting tag ref: $tag"
+              echo "删除标签引用：$tag"
               gh api -X DELETE "repos/${{ github.repository }}/git/refs/tags/$tag" || true
             done
           fi
 
-      - name: Delete old workflow runs
+      - name: 删除旧流程运行记录
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           CURRENT_RUN_ID: ${{ github.run_id }}
@@ -81,22 +81,22 @@ jobs:
           )
 
           if [ "${#run_ids[@]}" -eq 0 ]; then
-            echo "No workflow runs found."
+            echo "没有找到流程运行记录。"
             exit 0
           fi
 
-          printf 'Workflow runs to delete, excluding current run %s:\n' "$CURRENT_RUN_ID"
+          printf '将删除以下流程运行记录，当前流程 %s 除外：\n' "$CURRENT_RUN_ID"
           for run_id in "${run_ids[@]}"; do
             if [ "$run_id" = "$CURRENT_RUN_ID" ]; then
-              echo "Skipping current cleanup run: $run_id"
+              echo "跳过当前清理流程：$run_id"
               continue
             fi
-            echo "Deleting workflow run: $run_id"
+            echo "删除流程运行记录：$run_id"
             gh api -X DELETE "repos/${{ github.repository }}/actions/runs/$run_id" || true
           done
 
-      - name: Cleanup summary
+      - name: 输出清理汇总
         run: |
-          echo "Cleanup completed."
-          echo "Deleted all GitHub Releases, core release tags, and old workflow run records that the token was allowed to delete."
-          echo "The current cleanup workflow run may remain until a later cleanup run deletes it."
+          echo "清理完成。"
+          echo "已删除 Token 权限允许删除的 GitHub Release、核心发布标签和旧流程运行记录。"
+          echo "当前清理流程记录可能会保留到下次清理时删除。"
