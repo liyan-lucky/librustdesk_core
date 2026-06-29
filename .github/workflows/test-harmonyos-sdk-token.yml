@@ -10,11 +10,11 @@ on:
       sdk_tag:
         description: '要检查的 SDK Release 标签'
         required: true
-        default: 'linux_command_line_tool_6.1.1'
+        default: 'linux_ohos_sdk_min_6.1.1'
       sdk_asset:
         description: '要检查的 SDK 资产文件名'
         required: true
-        default: 'linux-harmonyos-command-line-tool-full.7z'
+        default: 'linux-ohos-sdk-min.zip'
 
 permissions:
   contents: read
@@ -57,13 +57,17 @@ jobs:
           echo "检查 Release：$SDK_TAG"
           echo "需要的资产文件：$SDK_ASSET"
 
+          echo "==== 最近 Release 列表 ===="
+          gh release list --repo "$SDK_REPO" --limit 20
+
+          echo "==== 指定 Release 资产列表 ===="
           gh release view "$SDK_TAG" --repo "$SDK_REPO" --json tagName,name,isDraft,isPrerelease,assets \
             --jq '"tag=\(.tagName) name=\(.name) draft=\(.isDraft) prerelease=\(.isPrerelease)\nassets:\n" + ([.assets[] | "- \(.name) size=\(.size) contentType=\(.contentType)"] | join("\n"))'
 
           found=$(gh release view "$SDK_TAG" --repo "$SDK_REPO" --json assets \
-            --jq --arg asset "$SDK_ASSET" '[.assets[] | select(.name == $asset)] | length')
+            --jq '[.assets[].name] | index(env.SDK_ASSET) != null')
 
-          if [ "$found" != "1" ]; then
+          if [ "$found" != "true" ]; then
             echo "错误：Release 中没有找到指定 SDK 资产文件。"
             echo "期望文件：$SDK_ASSET"
             exit 1
