@@ -1,0 +1,72 @@
+name: Test HarmonyOS SDK token
+
+on:
+  workflow_dispatch:
+    inputs:
+      sdk_repo:
+        description: 'SDK repository owner/name'
+        required: true
+        default: 'liyan-lucky/HarmonyOS_SDK_Tools'
+      sdk_tag:
+        description: 'SDK release tag to check'
+        required: true
+        default: 'linux_command_line_tool_6.1.1'
+      sdk_asset:
+        description: 'SDK asset name to check'
+        required: true
+        default: 'linux-harmonyos-command-line-tool-full.7z'
+
+permissions:
+  contents: read
+
+jobs:
+  test-token:
+    name: Test SDK token access
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check HARMONYOS_SDK_TOKEN is configured
+        env:
+          GH_TOKEN: ${{ secrets.HARMONYOS_SDK_TOKEN }}
+        run: |
+          set -euo pipefail
+          if [ -z "${GH_TOKEN:-}" ]; then
+            echo "ERROR: Missing repository secret: HARMONYOS_SDK_TOKEN"
+            echo "Add it in librustdesk_core -> Settings -> Secrets and variables -> Actions."
+            exit 1
+          fi
+          echo "HARMONYOS_SDK_TOKEN is present."
+
+      - name: Check SDK repository access
+        env:
+          GH_TOKEN: ${{ secrets.HARMONYOS_SDK_TOKEN }}
+          SDK_REPO: ${{ inputs.sdk_repo }}
+        run: |
+          set -euo pipefail
+          echo "Checking repository access: $SDK_REPO"
+          gh repo view "$SDK_REPO" --json nameWithOwner,visibility,defaultBranchRef \
+            --jq '"repo=\(.nameWithOwner) visibility=\(.visibility) default_branch=\(.defaultBranchRef.name)"'
+
+      - name: Check SDK release and asset
+        env:
+          GH_TOKEN: ${{ secrets.HARMONYOS_SDK_TOKEN }}
+          SDK_REPO: ${{ inputs.sdk_repo }}
+          SDK_TAG: ${{ inputs.sdk_tag }}
+          SDK_ASSET: ${{ inputs.sdk_asset }}
+        run: |
+          set -euo pipefail
+          echo "Checking release: $SDK_TAG"
+          echo "Required asset: $SDK_ASSET"
+
+          gh release view "$SDK_TAG" --repo "$SDK_REPO" --json tagName,name,isDraft,isPrerelease,assets \
+            --jq '"tag=\(.tagName) name=\(.name) draft=\(.isDraft) prerelease=\(.isPrerelease)\nassets:\n" + ([.assets[] | "- \(.name) size=\(.size) contentType=\(.contentType)"] | join("\n"))'
+
+          found=$(gh release view "$SDK_TAG" --repo "$SDK_REPO" --json assets \
+            --jq --arg asset "$SDK_ASSET" '[.assets[] | select(.name == $asset)] | length')
+
+          if [ "$found" != "1" ]; then
+            echo "ERROR: SDK asset was not found in release."
+            echo "Expected: $SDK_ASSET"
+            exit 1
+          fi
+
+          echo "OK: SDK asset exists and token can read it."
