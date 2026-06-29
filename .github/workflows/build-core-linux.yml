@@ -1,4 +1,4 @@
-name: Build librustdesk_core.a (Linux)
+name: 构建 HarmonyOS 核心库（Linux）
 
 on:
   workflow_dispatch:
@@ -8,13 +8,13 @@ permissions:
 
 jobs:
   reserve_release_number:
-    name: Reserve release number
+    name: 预留发布版本号
     runs-on: ubuntu-latest
     outputs:
       release_number: ${{ steps.reserve.outputs.release_number }}
       tag: ${{ steps.reserve.outputs.tag }}
     steps:
-      - name: Reserve next core tag
+      - name: 预留下一个核心库标签
         id: reserve
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -47,7 +47,7 @@ jobs:
           echo "tag=$tag" >> "$GITHUB_OUTPUT"
 
   build:
-    name: Build core on Linux (${{ matrix.lib_dir }})
+    name: Linux 构建核心库（${{ matrix.lib_dir }}）
     needs: reserve_release_number
     runs-on: ubuntu-22.04
     timeout-minutes: 120
@@ -97,26 +97,26 @@ jobs:
       RELEASE_ARTIFACT_MAX_BYTES: "250000000"
 
     steps:
-      - name: Checkout
+      - name: 检出代码
         uses: actions/checkout@v4
 
-      - name: Install Rust toolchain
+      - name: 安装 Rust 工具链
         uses: dtolnay/rust-toolchain@1.88.0
         with:
           targets: ${{ matrix.target }}
 
-      - name: Install system dependencies
+      - name: 安装系统依赖
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
             build-essential cmake ninja-build autoconf automake libtool \
             pkg-config perl python3 curl git unzip p7zip-full
 
-      - name: Prepare build directories
+      - name: 准备构建目录
         run: |
           mkdir -p "$RUSTDESK_HARMONY_BUILD_DIR" "$VCPKG_ROOT" "$VCPKG_INSTALLED_ROOT"
 
-      - name: Download OpenHarmony SDK
+      - name: 下载 HarmonyOS SDK
         env:
           GH_TOKEN: ${{ secrets.HARMONYOS_SDK_TOKEN }}
           SDK_REPO: liyan-lucky/HarmonyOS_SDK_Tools
@@ -182,7 +182,7 @@ jobs:
           echo "SDK root: $sdk_native_root"
           ls -la "$native_dir/llvm/bin" | head -80
 
-      - name: Cache Cargo dependencies
+      - name: 缓存 Cargo 依赖
         uses: actions/cache@v4
         with:
           path: |
@@ -193,7 +193,7 @@ jobs:
           restore-keys: |
             linux-ohos-${{ matrix.lib_dir }}-cargo-v2-
 
-      - name: Cache OHOS external static libraries
+      - name: 缓存 OHOS 外部静态库
         uses: actions/cache@v4
         with:
           path: |
@@ -204,7 +204,7 @@ jobs:
           restore-keys: |
             linux-ohos-extlibs-${{ matrix.target }}-
 
-      - name: Prepare libsodium-sys source
+      - name: 准备 libsodium-sys 源码
         run: |
           registry_src="$HOME/.cargo/registry/src"
           crate_dir="$registry_src/manual/libsodium-sys-0.2.7"
@@ -229,7 +229,7 @@ jobs:
           fi
           test -d "$crate_dir/libsodium"
 
-      - name: Build libopus for OHOS
+      - name: 编译 libopus
         run: |
           opus_version="1.5.2"
           opus_root="$RUSTDESK_HARMONY_BUILD_DIR/opus-$LIB_DIR"
@@ -258,7 +258,7 @@ jobs:
           test -f "$include_dir/opus/opus_multistream.h"
           test -f "$lib_dir/libopus.a"
 
-      - name: Build libvpx for OHOS
+      - name: 编译 libvpx
         run: |
           version="1.15.2"
           install_root="$VCPKG_INSTALLED_ROOT/$TRIPLET"
@@ -293,7 +293,7 @@ jobs:
           cp -f libvpx.a "$install_root/lib/libvpx.a"
           for h in vp8.h vp8cx.h vp8dx.h vpx_codec.h vpx_decoder.h vpx_encoder.h vpx_ext_ratectrl.h vpx_frame_buffer.h vpx_image.h vpx_integer.h vpx_tpl.h; do cp -f "../vpx/$h" "$install_root/include/vpx/$h"; done
 
-      - name: Build libyuv for OHOS
+      - name: 编译 libyuv
         run: |
           revision="0faf8dd0e004520a61a603a4d2996d5ecc80dc3f"
           install_root="$VCPKG_INSTALLED_ROOT/$TRIPLET"
@@ -316,7 +316,7 @@ jobs:
           mkdir -p "$include_dir/libyuv"
           cp -rf "$source_dir/include/libyuv/"* "$include_dir/libyuv/"
 
-      - name: Build libsodium for OHOS
+      - name: 编译 libsodium
         run: |
           install_dir="$RUSTDESK_HARMONY_BUILD_DIR/build/libsodium/$TARGET_TRIPLE"
           final_lib="$install_dir/lib/liblibsodium.a"
@@ -347,7 +347,7 @@ jobs:
           cp -f "$install_dir/lib/libsodium.a" "$install_dir/lib/liblibsodium.a"
           test -f "$final_lib"
 
-      - name: Build librustdesk_core.a
+      - name: 编译 librustdesk_core.a
         run: |
           chmod +x scripts/build_native_bridge.sh scripts/_ohos-sdk-env.sh scripts/ohos-llvm-ar.sh
           chmod +x "scripts/$TARGET_TRIPLE-clang.sh" "scripts/$TARGET_TRIPLE-clang++.sh"
@@ -356,7 +356,7 @@ jobs:
           cp -f "entry/src/main/libs/$LIB_DIR/librustdesk_core.a" "./${{ matrix.release_file }}"
           ls -la "./${{ matrix.release_file }}"
 
-      - name: Validate final artifact
+      - name: 校验最终产物
         run: |
           artifact="./${{ matrix.release_file }}"
           test -f "$artifact"
@@ -368,7 +368,7 @@ jobs:
           fi
           sha256sum "$artifact"
 
-      - name: Upload Actions artifact
+      - name: 上传构建产物
         uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.artifact_name }}
@@ -376,25 +376,25 @@ jobs:
           if-no-files-found: error
 
   release:
-    name: Publish Linux dual-architecture core
+    name: 发布 Linux 双架构核心库
     needs: [reserve_release_number, build]
     runs-on: ubuntu-latest
     if: needs.build.result == 'success'
 
     steps:
-      - name: Download arm64 artifact
+      - name: 下载 arm64 产物
         uses: actions/download-artifact@v4
         with:
           name: librustdesk_core_linux_arm64
           path: ./release-assets
 
-      - name: Download x86_64 artifact
+      - name: 下载 x86_64 产物
         uses: actions/download-artifact@v4
         with:
           name: librustdesk_core_linux_x86_64
           path: ./release-assets
 
-      - name: Validate release assets
+      - name: 校验 Release 产物
         run: |
           set -euo pipefail
           ls -la ./release-assets/
@@ -412,7 +412,7 @@ jobs:
             sha256sum "$f"
           done
 
-      - name: Create GitHub Release
+      - name: 创建 GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ needs.reserve_release_number.outputs.tag }}
