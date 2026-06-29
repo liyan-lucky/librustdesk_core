@@ -1,4 +1,4 @@
-name: Auto trigger Linux core build
+name: 自动触发 Linux 核心构建
 
 on:
   workflow_dispatch:
@@ -17,14 +17,14 @@ permissions:
 
 jobs:
   trigger:
-    name: Trigger Linux core build
+    name: 触发并等待 Linux 核心构建
     runs-on: ubuntu-latest
     timeout-minutes: 180
     steps:
-      - name: Checkout
+      - name: 检出代码
         uses: actions/checkout@v4
 
-      - name: Trigger Linux build workflow
+      - name: 触发 Linux 构建流程
         id: trigger_linux
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -37,7 +37,7 @@ jobs:
           echo "ref_name=$ref_name" >> "$GITHUB_OUTPUT"
           gh workflow run build-core-linux.yml --repo "${{ github.repository }}" --ref "$ref_name"
 
-      - name: Wait for Linux build workflow
+      - name: 等待 Linux 构建流程完成
         id: linux_run
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -57,17 +57,17 @@ jobs:
             if [ -n "$run_id" ]; then
               break
             fi
-            echo "Waiting for Linux workflow run to appear... ($i)"
+            echo "等待 Linux 构建流程出现... ($i)"
             sleep 10
           done
           if [ -z "$run_id" ]; then
-            echo "Linux workflow run was not found."
+            echo "没有找到 Linux 构建流程。"
             exit 1
           fi
           echo "linux_run_id=$run_id" >> "$GITHUB_OUTPUT"
           gh run watch "$run_id" --repo "${{ github.repository }}" --exit-status
 
-      - name: Locate latest core release
+      - name: 定位最新核心库 Release
         id: release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -78,14 +78,14 @@ jobs:
               --jq '[.[] | select(.tagName | test("^core-[0-9]{3}$"))] | sort_by(.createdAt) | last | .tagName'
           )
           if [ -z "$tag" ] || [ "$tag" = "null" ]; then
-            echo "No core release found."
+            echo "没有找到核心库 Release。"
             exit 1
           fi
           number="${tag#core-}"
           echo "tag=$tag" >> "$GITHUB_OUTPUT"
           echo "number=$number" >> "$GITHUB_OUTPUT"
 
-      - name: Generate release notes
+      - name: 生成发布说明
         env:
           RELEASE_NUMBER: ${{ steps.release.outputs.number }}
           RELEASE_TAG: ${{ steps.release.outputs.tag }}
@@ -93,7 +93,7 @@ jobs:
         run: |
           bash .github/scripts/write-core-release-notes.sh release-notes.md
 
-      - name: Update release notes only
+      - name: 更新发布说明
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
