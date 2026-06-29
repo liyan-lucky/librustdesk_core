@@ -108,18 +108,43 @@ jobs:
       - name: Download OpenHarmony SDK
         shell: pwsh
         env:
-          OHOS_SDK_ZIP_URL: ${{ secrets.OHOS_SDK_ZIP_URL }}
+          GH_TOKEN: ${{ secrets.HARMONYOS_SDK_TOKEN }}
+          SDK_REPO: liyan-lucky/HarmonyOS_SDK_Tools
+          SDK_TAG: windows_command_line_tool_6.1.1
+          SDK_ASSET: windows-harmonyos-command-line-tool-full.7z
         run: |
-          if ([string]::IsNullOrWhiteSpace($env:OHOS_SDK_ZIP_URL)) {
-            throw "Missing repository secret: OHOS_SDK_ZIP_URL"
+          if ([string]::IsNullOrWhiteSpace($env:GH_TOKEN)) {
+            throw "Missing repository secret: HARMONYOS_SDK_TOKEN"
           }
 
-          $zip = Join-Path $env:RUSTDESK_HARMONY_BUILD_DIR "ohos-sdk.zip"
+          $sdkArchive = Join-Path $env:RUSTDESK_HARMONY_BUILD_DIR $env:SDK_ASSET
           $sdkRoot = Join-Path $env:RUSTDESK_HARMONY_BUILD_DIR "ohos-sdk"
 
-          Invoke-WebRequest -Uri $env:OHOS_SDK_ZIP_URL -OutFile $zip
+          if (Test-Path $sdkRoot) {
+            Remove-Item -Recurse -Force $sdkRoot
+          }
           New-Item -ItemType Directory -Force -Path $sdkRoot | Out-Null
-          Expand-Archive -Path $zip -DestinationPath $sdkRoot -Force
+
+          gh release download $env:SDK_TAG `
+            --repo $env:SDK_REPO `
+            --pattern $env:SDK_ASSET `
+            --dir $env:RUSTDESK_HARMONY_BUILD_DIR
+
+          if (-not (Test-Path $sdkArchive)) {
+            Get-ChildItem $env:RUSTDESK_HARMONY_BUILD_DIR | Format-List Name,Length,FullName
+            throw "SDK asset was not downloaded: $sdkArchive"
+          }
+
+          if ($env:SDK_ASSET.EndsWith(".zip", [System.StringComparison]::OrdinalIgnoreCase)) {
+            Expand-Archive -Path $sdkArchive -DestinationPath $sdkRoot -Force
+          } elseif ($env:SDK_ASSET.EndsWith(".7z", [System.StringComparison]::OrdinalIgnoreCase)) {
+            7z x -y $sdkArchive "-o$sdkRoot"
+            if ($LASTEXITCODE -ne 0) {
+              throw "7z extract failed with exit code $LASTEXITCODE"
+            }
+          } else {
+            throw "Unsupported SDK archive format: $env:SDK_ASSET"
+          }
 
           $clang = Get-ChildItem -Path $sdkRoot -Recurse -Filter clang.exe | Where-Object {
             $_.FullName -like "*native*llvm*bin*clang.exe"
