@@ -34,34 +34,37 @@ jobs:
           if [ -z "$ref_name" ]; then
             ref_name="main"
           fi
+          triggered_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)
           echo "ref_name=$ref_name" >> "$GITHUB_OUTPUT"
+          echo "triggered_at=$triggered_at" >> "$GITHUB_OUTPUT"
           gh workflow run build-core-linux.yml --repo "${{ github.repository }}" --ref "$ref_name"
 
-      - name: 等待 Linux 构建流程完成
+      - name: 等待刚触发的 Linux 构建流程完成
         id: linux_run
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           REF_NAME: ${{ steps.trigger_linux.outputs.ref_name }}
+          TRIGGERED_AT: ${{ steps.trigger_linux.outputs.triggered_at }}
         run: |
           set -euo pipefail
           run_id=""
-          for i in $(seq 1 30); do
+          for i in $(seq 1 60); do
             run_id=$(
               gh run list --repo "${{ github.repository }}" \
                 --workflow build-core-linux.yml \
                 --branch "$REF_NAME" \
-                --limit 10 \
-                --json databaseId,status,conclusion,event \
-                --jq '[.[] | select(.event == "workflow_dispatch")][0].databaseId // empty'
+                --limit 20 \
+                --json databaseId,status,conclusion,event,createdAt \
+                --jq --arg triggered_at "$TRIGGERED_AT" '[.[] | select(.event == "workflow_dispatch" and .createdAt >= $triggered_at)] | sort_by(.createdAt) | last | .databaseId // empty'
             )
             if [ -n "$run_id" ]; then
               break
             fi
-            echo "等待 Linux 构建流程出现... ($i)"
+            echo "等待刚触发的 Linux 构建流程出现... ($i)"
             sleep 10
           done
           if [ -z "$run_id" ]; then
-            echo "没有找到 Linux 构建流程。"
+            echo "没有找到刚触发的 Linux 构建流程。"
             exit 1
           fi
           echo "linux_run_id=$run_id" >> "$GITHUB_OUTPUT"
