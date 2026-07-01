@@ -10,12 +10,15 @@ RustDesk HarmonyOS 原生核心静态库构建器。从 RustDesk 1.4.7 上游源
 
 ## 当前状态
 
+当前事实以 [`docs/CURRENT_STATUS.md`](docs/CURRENT_STATUS.md) 为准。
+
 - 当前发布标签统一使用 `core-001`、`core-002`、`core-003` 形式。
 - Windows 和 Linux 构建共用同一套版本编号。
 - 构建启动后立即预留版本号；失败也会保留标签占号。
 - 只有 arm64 和 x86_64 两个产物都完整生成并通过校验，才创建 Release 并上传正式包。
 - Release 说明只更新介绍内容，不改标签和 Release 名称。
 - Linux 可由 main 分支更新自动触发，也可手动触发；Windows 保持手动触发。
+- `backup` 是 `main` 的快照备份分支，可通过手动 workflow 强制刷新。
 
 ## 架构
 
@@ -86,6 +89,11 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts\build_native_bridge.
 - `core-002` 以后使用更新说明模板。
 - 仅更新 Release 介绍内容，不修改标签和 Release 名称。
 
+### 备份分支
+
+- Workflow：`.github/workflows/force-backup-main.yml`
+- 手动触发后，输入 `YES` 才会把 `main` 当前提交同步到 `backup`。
+
 ## 发布产物
 
 | 文件 | 架构 | 用途 |
@@ -123,4 +131,4 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts\build_native_bridge.
 
 ## 历史记录
 
-旧的测试包编号、历史 SHA、历史包大小和历史 Release 信息不再作为当前主说明展示。当前有效发布规则以本 README 的 `core-XXX` 统一编号规则和 CI/CD 说明为准。
+旧的测试包编号、历史 SHA、历史包大小和历史 Release 信息不再作为当前主说明展示。当前有效发布规则以本 README、`docs/CURRENT_STATUS.md` 的 `core-XXX` 统一编号规则和 CI/CD 说明为准。
