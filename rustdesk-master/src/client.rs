@@ -426,10 +426,17 @@ impl Client {
             NatType::from_i32(my_nat_type).unwrap_or(NatType::UNKNOWN_NAT)
         };
 
+        log::info!(
+            "punch_hole: key len={}, token len={}, secure_tcp will be attempted={}",
+            key.len(),
+            token.len(),
+            !key.is_empty() && !token.is_empty()
+        );
         if !key.is_empty() && !token.is_empty() {
             // mainly for the security of token
-            if let Err(e) = secure_tcp(&mut socket, &key).await {
-                log::warn!("secure_tcp failed, falling back to non-secure: {}", e);
+            match secure_tcp(&mut socket, &key).await {
+                Ok(_) => log::info!("secure_tcp succeeded for punch hole"),
+                Err(e) => log::warn!("secure_tcp failed, falling back to non-secure: {}", e),
             }
         } else if let Some(udp) = udp.1.as_ref() {
             let tm = Instant::now();
@@ -459,6 +466,12 @@ impl Client {
         };
         let udp_nat_port = udp.1.map(|x| *x.lock().unwrap()).unwrap_or(0);
         let punch_type = if udp_nat_port > 0 { "UDP" } else { "TCP" };
+        log::info!(
+            "sending PunchHoleRequest: id={}, licence_key len={}, token len={}",
+            peer,
+            key.len(),
+            token.len()
+        );
         msg_out.set_punch_hole_request(PunchHoleRequest {
             id: peer.to_owned(),
             token: token.to_owned(),
@@ -884,10 +897,17 @@ impl Client {
                 .await
                 .with_context(|| "Failed to connect to rendezvous server")?;
 
+            log::info!(
+                "relay: key len={}, token len={}, secure_tcp will be attempted={}",
+                key.len(),
+                token.len(),
+                !key.is_empty() && !token.is_empty()
+            );
             if !key.is_empty() && !token.is_empty() {
                 // mainly for the security of token
-                if let Err(e) = secure_tcp(&mut socket, key).await {
-                    log::warn!("secure_tcp failed in relay path, falling back to non-secure: {}", e);
+                match secure_tcp(&mut socket, key).await {
+                    Ok(_) => log::info!("secure_tcp succeeded for relay"),
+                    Err(e) => log::warn!("secure_tcp failed in relay path, falling back to non-secure: {}", e),
                 }
             }
 
