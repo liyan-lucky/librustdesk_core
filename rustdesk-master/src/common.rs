@@ -1809,9 +1809,9 @@ pub async fn get_key(sync: bool) -> String {
             return lic.key;
         }
     }
-    #[cfg(target_os = "ios")]
+    #[cfg(any(target_os = "ios", all(target_os = "linux", target_env = "ohos")))]
     let mut key = Config::get_option("key");
-    #[cfg(not(target_os = "ios"))]
+    #[cfg(not(any(target_os = "ios", all(target_os = "linux", target_env = "ohos"))))]
     let mut key = if sync {
         Config::get_option("key")
     } else {
