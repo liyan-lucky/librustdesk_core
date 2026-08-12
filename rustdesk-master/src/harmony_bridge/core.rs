@@ -594,6 +594,27 @@ pub fn session_input_key(key_code: c_int, is_pressed: bool, modifiers: c_int) ->
         );
         return false;
     };
+    let ctrl = modifiers & 1 != 0;
+    let alt = modifiers & 2 != 0;
+    let shift = modifiers & 4 != 0;
+    let command = modifiers & 8 != 0;
+
+    if shift && (65..=90).contains(&key_code) {
+        let mut key_event = KeyEvent::new();
+        key_event.set_chr(key_code as u32);
+        if is_pressed {
+            key_event.down = true;
+        }
+        key_event.mode = KeyboardMode::Legacy.into();
+        session.send_key_event(&key_event);
+        queue_event(
+            "keyboard-input",
+            &format!("key={key_code};chr={};down={is_pressed};shift=uppercase", key_code as u8 as char),
+            &get_active_peer_id(),
+        );
+        return true;
+    }
+
     let Some(name) = key_code_to_official_key_name(key_code) else {
         queue_event(
             "keyboard-input",
