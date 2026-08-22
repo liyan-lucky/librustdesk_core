@@ -1428,6 +1428,18 @@ impl<T: InvokeUiSession> Remote<T> {
                     self.handler.set_cursor_position(cp);
                 }
                 Some(message::Union::Clipboard(cb)) => {
+                    #[cfg(target_env = "ohos")]
+                    crate::harmony_bridge::queue_event(
+                        "clipboard-receive-diag",
+                        &format!(
+                            "type=single;disabled={};format={:?};compress={};bytes={}",
+                            self.handler.lc.read().unwrap().disable_clipboard.v,
+                            cb.format.enum_value(),
+                            cb.compress,
+                            cb.content.len()
+                        ),
+                        &crate::harmony_bridge::get_active_peer_id(),
+                    );
                     if !self.handler.lc.read().unwrap().disable_clipboard.v {
                         #[cfg(not(any(target_os = "android", target_os = "ios", target_env = "ohos")))]
                         update_clipboard(vec![cb], ClipboardSide::Client);
@@ -1447,6 +1459,16 @@ impl<T: InvokeUiSession> Remote<T> {
                     }
                 }
                 Some(message::Union::MultiClipboards(_mcb)) => {
+                    #[cfg(target_env = "ohos")]
+                    crate::harmony_bridge::queue_event(
+                        "clipboard-receive-diag",
+                        &format!(
+                            "type=multi;disabled={};count={}",
+                            self.handler.lc.read().unwrap().disable_clipboard.v,
+                            _mcb.clipboards.len()
+                        ),
+                        &crate::harmony_bridge::get_active_peer_id(),
+                    );
                     if !self.handler.lc.read().unwrap().disable_clipboard.v {
                         #[cfg(not(any(target_os = "android", target_os = "ios", target_env = "ohos")))]
                         update_clipboard(_mcb.clipboards, ClipboardSide::Client);

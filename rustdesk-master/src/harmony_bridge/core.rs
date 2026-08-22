@@ -840,6 +840,17 @@ pub fn session_start(
         peer_id,
     );
 
+    // Terminal capability is negotiated in LoginRequest, so the connection
+    // itself must use TERMINAL instead of opening it on a desktop session.
+    let conn_type = match get_local_option("harmony-session-type").as_str() {
+        "terminal" => ConnType::TERMINAL,
+        _ => ConnType::DEFAULT_CONN,
+    };
+    queue_event(
+        "session-type-diag",
+        &format!("connType={conn_type:?}"),
+        peer_id,
+    );
     let session = Session::<HarmonyHandler> {
         password: password.to_owned(),
         server_keyboard_enabled: Arc::new(RwLock::new(true)),
@@ -854,7 +865,7 @@ pub fn session_start(
     };
     session.lc.write().unwrap().initialize(
         peer_id.to_owned(),
-        ConnType::DEFAULT_CONN,
+        conn_type,
         None,
         false,
         None,
@@ -1627,6 +1638,12 @@ fn mark_peer_connected_with_cached_info(peer_id: &str) {
     update_connect_state("connected", peer_id, "Connected", &detail, "");
     queue_event("session-connected", &detail, peer_id);
     queue_event("peer-info", &detail, peer_id);
+    let disabled = session_get_toggle_option("disable-clipboard");
+    queue_event(
+        "clipboard-state-diag",
+        &format!("phase=connected;disabled={disabled}"),
+        peer_id,
+    );
 }
 
 /// Returns the boolean value of a session toggle option by key.
@@ -1678,6 +1695,11 @@ pub fn apply_session_option(key: &str, value: &str) -> bool {
             "",
         );
         return false;
+    };
+    let clipboard_before = if key == "disable-clipboard" {
+        Some(session.get_toggle_option(key.to_owned()))
+    } else {
+        None
     };
     let applied = match key {
         "image-quality" => {
@@ -1791,6 +1813,14 @@ pub fn apply_session_option(key: &str, value: &str) -> bool {
         queue_event(
             "session-option",
             &format!("failed=unsupported;key={key};value={value}"),
+            &get_active_peer_id(),
+        );
+    }
+    if let Some(before) = clipboard_before {
+        let after = session.get_toggle_option(key.to_owned());
+        queue_event(
+            "clipboard-state-diag",
+            &format!("phase=apply;requested={value};before={before};after={after};applied={applied}"),
             &get_active_peer_id(),
         );
     }

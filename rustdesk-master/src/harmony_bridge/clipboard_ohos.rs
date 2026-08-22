@@ -67,8 +67,15 @@ pub fn get_msg_if_not_support_multi_clip(
 
 fn queue_text_clipboard(mut cb: Clipboard) {
     if cb.format.enum_value() != Ok(ClipboardFormat::Text) {
+        queue_event(
+            "clipboard-decode-diag",
+            &format!("result=ignored-format;format={:?}", cb.format.enum_value()),
+            &get_active_peer_id(),
+        );
         return;
     }
+    let compressed = cb.compress;
+    let source_bytes = cb.content.len();
     let content = if cb.compress {
         hbb_common::compress::decompress(&cb.content)
     } else {
@@ -76,8 +83,20 @@ fn queue_text_clipboard(mut cb: Clipboard) {
     };
     if let Ok(text) = String::from_utf8(content) {
         if !text.is_empty() {
+            queue_event(
+                "clipboard-decode-diag",
+                &format!(
+                    "result=text;compress={compressed};sourceBytes={source_bytes};chars={}",
+                    text.chars().count()
+                ),
+                &get_active_peer_id(),
+            );
             queue_event("clipboard-incoming", &text, &get_active_peer_id());
+        } else {
+            queue_event("clipboard-decode-diag", "result=empty", &get_active_peer_id());
         }
+    } else {
+        queue_event("clipboard-decode-diag", "result=invalid-utf8", &get_active_peer_id());
     }
 }
 

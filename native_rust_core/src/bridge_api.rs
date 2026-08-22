@@ -13,6 +13,17 @@ fn read_c_string(value: *const c_char) -> String {
         .to_owned()
 }
 
+// Terminal data is a byte-oriented stream. Control characters such as CR,
+// TAB and ESC are meaningful and must never be trimmed.
+fn read_terminal_data(value: *const c_char) -> String {
+    if value.is_null() {
+        return String::new();
+    }
+    unsafe { CStr::from_ptr(value) }
+        .to_string_lossy()
+        .into_owned()
+}
+
 fn to_owned_c_string(value: String) -> *const c_char {
     CString::new(value)
         .expect("bridge JSON should not contain embedded null bytes")
@@ -498,7 +509,7 @@ pub extern "C" fn rustdesk_bridge_session_send_terminal_input(
     terminal_id: c_int,
     data: *const c_char,
 ) -> c_int {
-    let data = read_c_string(data);
+    let data = read_terminal_data(data);
     if rustdesk_core::harmony_bridge::session_send_terminal_input(terminal_id, &data) {
         1
     } else {
