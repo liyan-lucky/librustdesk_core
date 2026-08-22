@@ -1319,6 +1319,11 @@ pub extern "C" fn rustdesk_bridge_main_get_login_device_info() -> *const c_char 
 }
 
 #[no_mangle]
+pub extern "C" fn rustdesk_bridge_main_get_sysinfo() -> *const c_char {
+    to_owned_c_string(rustdesk_core::harmony_bridge::main_get_sysinfo())
+}
+
+#[no_mangle]
 pub extern "C" fn rustdesk_bridge_main_get_hard_option(key: *const c_char) -> *const c_char {
     let key = read_c_string(key);
     to_owned_c_string(rustdesk_core::harmony_bridge::main_get_hard_option(&key))

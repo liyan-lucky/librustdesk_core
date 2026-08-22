@@ -78,7 +78,15 @@ fn install_android_deps() {
 }
 
 fn main() {
-    hbb_common::gen_version();
+    println!("cargo:rerun-if-changed=Cargo.toml");
+    if std::env::var("RUSTDESK_SKIP_VERSION_WRITE").as_deref() != Ok("1") {
+        let version = std::env::var("CARGO_PKG_VERSION").unwrap_or_default();
+        let content = format!(
+            "pub const VERSION: &str = \"{}\";\n#[allow(dead_code)]\npub const BUILD_DATE: &str = \"\";\n",
+            version
+        );
+        let _ = std::fs::write("./src/version.rs", content);
+    }
     install_android_deps();
     let target_os = std::env::var("CARGO_CFG_TARGET_OS").unwrap();
     if target_os == "windows" {

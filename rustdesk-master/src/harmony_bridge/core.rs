@@ -977,7 +977,8 @@ pub fn main_account_auth(
 }
 
 /// Cancels an in-progress account authentication.
-pub fn main_account_auth_cancel() {}
+pub fn main_account_auth_cancel() {
+}
 
 /// Returns the account authentication result as a JSON string.
 pub fn main_account_auth_result() -> String {
@@ -2927,6 +2928,10 @@ pub fn main_resolve_avatar_url(avatar: &str) -> String {
 
 pub fn main_get_login_device_info() -> String {
     String::new()
+}
+
+pub fn main_get_sysinfo() -> String {
+    crate::get_sysinfo().to_string()
 }
 
 pub fn main_get_hard_option(key: &str) -> String {

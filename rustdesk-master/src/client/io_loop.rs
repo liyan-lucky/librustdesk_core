@@ -1429,7 +1429,7 @@ impl<T: InvokeUiSession> Remote<T> {
                 }
                 Some(message::Union::Clipboard(cb)) => {
                     if !self.handler.lc.read().unwrap().disable_clipboard.v {
-                        #[cfg(not(any(target_os = "android", target_os = "ios")))]
+                        #[cfg(not(any(target_os = "android", target_os = "ios", target_env = "ohos")))]
                         update_clipboard(vec![cb], ClipboardSide::Client);
                         #[cfg(target_os = "ios")]
                         {
@@ -1442,13 +1442,13 @@ impl<T: InvokeUiSession> Remote<T> {
                                 self.handler.clipboard(content);
                             }
                         }
-                        #[cfg(target_os = "android")]
+                        #[cfg(any(target_os = "android", target_env = "ohos"))]
                         crate::clipboard::handle_msg_clipboard(cb);
                     }
                 }
                 Some(message::Union::MultiClipboards(_mcb)) => {
                     if !self.handler.lc.read().unwrap().disable_clipboard.v {
-                        #[cfg(not(any(target_os = "android", target_os = "ios")))]
+                        #[cfg(not(any(target_os = "android", target_os = "ios", target_env = "ohos")))]
                         update_clipboard(_mcb.clipboards, ClipboardSide::Client);
                         #[cfg(target_os = "ios")]
                         {
@@ -1467,7 +1467,7 @@ impl<T: InvokeUiSession> Remote<T> {
                                 }
                             }
                         }
-                        #[cfg(target_os = "android")]
+                        #[cfg(any(target_os = "android", target_env = "ohos"))]
                         crate::clipboard::handle_msg_multi_clipboards(_mcb);
                     }
                 }

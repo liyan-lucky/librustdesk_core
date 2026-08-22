@@ -1,5 +1,7 @@
 use hbb_common::{message_proto::*, ResultType};
 
+use crate::harmony_bridge::{get_active_peer_id, queue_event};
+
 pub const CLIPBOARD_NAME: &str = "clipboard";
 pub const FILE_CLIPBOARD_NAME: &str = "file-clipboard";
 pub const CLIPBOARD_INTERVAL: u64 = 333;
@@ -63,9 +65,35 @@ pub fn get_msg_if_not_support_multi_clip(
     None
 }
 
-pub fn handle_msg_clipboard(_cb: Clipboard) {}
+fn queue_text_clipboard(mut cb: Clipboard) {
+    if cb.format.enum_value() != Ok(ClipboardFormat::Text) {
+        return;
+    }
+    let content = if cb.compress {
+        hbb_common::compress::decompress(&cb.content)
+    } else {
+        cb.content.to_vec()
+    };
+    if let Ok(text) = String::from_utf8(content) {
+        if !text.is_empty() {
+            queue_event("clipboard-incoming", &text, &get_active_peer_id());
+        }
+    }
+}
 
-pub fn handle_msg_multi_clipboards(_mcb: MultiClipboards) {}
+pub fn handle_msg_clipboard(cb: Clipboard) {
+    queue_text_clipboard(cb);
+}
+
+pub fn handle_msg_multi_clipboards(mcb: MultiClipboards) {
+    if let Some(cb) = mcb
+        .clipboards
+        .into_iter()
+        .find(|cb| cb.format.enum_value() == Ok(ClipboardFormat::Text))
+    {
+        queue_text_clipboard(cb);
+    }
+}
 
 pub fn get_clipboards_msg(_client: bool) -> Option<Message> {
     None
