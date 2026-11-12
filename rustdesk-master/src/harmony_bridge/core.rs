@@ -2,11 +2,12 @@ use crate::client;
 use crate::client::file_trait::FileManager;
 use crate::client::{Data, Interface, QualityStatus};
 use crate::ui_session_interface::{io_loop, InvokeUiSession, Session};
+use hbb_common::base64;
 use hbb_common::config::{self, LanPeers, LocalConfig, PeerConfig};
 use hbb_common::message_proto::*;
 use hbb_common::rendezvous_proto::ConnType;
 use serde_json::json;
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 use std::os::raw::c_int;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex, OnceLock, RwLock};
@@ -16,6 +17,7 @@ static CONNECT_STATE: OnceLock<Mutex<ConnectState>> = OnceLock::new();
 static LOCAL_OPTIONS: OnceLock<Mutex<HashMap<String, String>>> = OnceLock::new();
 static LATEST_VIDEO_FRAME: OnceLock<Mutex<Option<VideoFrameState>>> = OnceLock::new();
 static INCOMING_SCREEN_FRAME: OnceLock<Mutex<Option<IncomingScreenFrameState>>> = OnceLock::new();
+static PENDING_AUDIO_FRAMES: OnceLock<Mutex<VecDeque<QueuedAudioFrame>>> = OnceLock::new();
 static ACTIVE_SESSION: OnceLock<Mutex<Option<Session<HarmonyHandler>>>> = OnceLock::new();
 static FILE_TRANSFER_SESSION: OnceLock<Mutex<Option<Session<HarmonyHandler>>>> = OnceLock::new();
 static ACTIVE_SESSION_PASSWORD: OnceLock<Mutex<String>> = OnceLock::new();
@@ -48,6 +50,14 @@ struct IncomingScreenFrameState {
     timestamp: i64,
     format: String,
     frames_seen: u64,
+}
+
+#[derive(Clone, Debug)]
+struct QueuedAudioFrame {
+    sample_rate: u32,
+    channels: u16,
+    timestamp: i64,
+    data_base64: String,
 }
 
 #[derive(Clone, Debug, Default)]
@@ -109,6 +119,56 @@ fn latest_video_frame() -> &'static Mutex<Option<VideoFrameState>> {
 
 fn incoming_screen_frame() -> &'static Mutex<Option<IncomingScreenFrameState>> {
     INCOMING_SCREEN_FRAME.get_or_init(|| Mutex::new(None))
+}
+
+fn pending_audio_frames() -> &'static Mutex<VecDeque<QueuedAudioFrame>> {
+    PENDING_AUDIO_FRAMES.get_or_init(|| Mutex::new(VecDeque::new()))
+}
+
+const HARMONY_AUDIO_SAMPLE_RATE: u32 = 48_000;
+const HARMONY_AUDIO_CHANNELS: u16 = 1;
+const MAX_PENDING_AUDIO_FRAMES: usize = 50;
+
+/// Queues decoded remote audio for the HarmonyOS AudioRenderer pull loop.
+/// The renderer is fixed to 48 kHz mono S16LE, so resample and downmix here.
+pub(crate) fn queue_decoded_audio_frame(samples: &[f32], sample_rate: u32, channels: u16) {
+    if samples.is_empty() || sample_rate == 0 || channels == 0 {
+        return;
+    }
+    let mut normalized = if sample_rate == HARMONY_AUDIO_SAMPLE_RATE {
+        samples.to_vec()
+    } else {
+        crate::audio_resample(samples, sample_rate, HARMONY_AUDIO_SAMPLE_RATE, channels)
+    };
+    if channels != HARMONY_AUDIO_CHANNELS {
+        normalized = crate::audio_rechannel(
+            normalized,
+            HARMONY_AUDIO_SAMPLE_RATE,
+            HARMONY_AUDIO_SAMPLE_RATE,
+            channels,
+            HARMONY_AUDIO_CHANNELS,
+        );
+    }
+    let pcm: Vec<u8> = normalized
+        .iter()
+        .flat_map(|sample| {
+            let value = (sample.clamp(-1.0, 1.0) * i16::MAX as f32).round() as i16;
+            value.to_le_bytes()
+        })
+        .collect();
+    if pcm.is_empty() {
+        return;
+    }
+    let mut queue = pending_audio_frames().lock().unwrap();
+    if queue.len() >= MAX_PENDING_AUDIO_FRAMES {
+        queue.pop_front();
+    }
+    queue.push_back(QueuedAudioFrame {
+        sample_rate: HARMONY_AUDIO_SAMPLE_RATE,
+        channels: HARMONY_AUDIO_CHANNELS,
+        timestamp: current_timestamp_millis(),
+        data_base64: base64::encode(pcm),
+    });
 }
 
 fn active_session() -> &'static Mutex<Option<Session<HarmonyHandler>>> {
@@ -304,7 +364,21 @@ pub fn pull_session_events_json() -> String {
 
 /// Pulls pending audio frames as a JSON string.
 pub fn pull_audio_frames_json() -> String {
-    "[]".to_owned()
+    let frames: Vec<_> = pending_audio_frames()
+        .lock()
+        .unwrap()
+        .drain(..)
+        .map(|frame| {
+            json!({
+                "sampleRate": frame.sample_rate,
+                "channels": frame.channels,
+                "format": "s16le",
+                "timestamp": frame.timestamp,
+                "dataBase64": frame.data_base64,
+            })
+        })
+        .collect();
+    json!(frames).to_string()
 }
 
 /// Returns the latest video frame metadata as JSON since the given frame ID.
@@ -818,6 +892,7 @@ pub fn session_start(
     *active_session_password().lock().unwrap() = password.to_owned();
     clear_connect_events();
     *latest_video_frame().lock().unwrap() = None;
+    pending_audio_frames().lock().unwrap().clear();
     apply_server_options(server, relay_server, api_server, key);
 
     // Harmony keeps remembered passwords in the application preference store. Clear
@@ -1893,6 +1968,7 @@ pub fn mark_session_error(message: &str) {
 
 /// Closes the current session.
 pub fn session_close() {
+    pending_audio_frames().lock().unwrap().clear();
     ACTIVE_SESSION_GENERATION.fetch_add(1, Ordering::SeqCst);
     close_file_transfer_session();
     active_session_password().lock().unwrap().clear();
