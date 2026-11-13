@@ -38,17 +38,23 @@ pub mod client {
         shift: bool,
         command: bool,
     ) {
-        if alt {
-            key_event.modifiers.push(ControlKey::Alt.into());
-        }
-        if ctrl {
-            key_event.modifiers.push(ControlKey::Control.into());
+        if ctrl && command {
+            // Private marker used by the Harmony client for physical printable
+            // text. It forces the remote legacy path without injecting Ctrl/Meta.
+            key_event.modifiers.push(ControlKey::RControl.into());
+        } else {
+            if alt {
+                key_event.modifiers.push(ControlKey::Alt.into());
+            }
+            if ctrl {
+                key_event.modifiers.push(ControlKey::Control.into());
+            }
+            if command {
+                key_event.modifiers.push(ControlKey::Meta.into());
+            }
         }
         if shift {
             key_event.modifiers.push(ControlKey::Shift.into());
-        }
-        if command {
-            key_event.modifiers.push(ControlKey::Meta.into());
         }
     }
 

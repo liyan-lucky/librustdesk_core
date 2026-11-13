@@ -694,7 +694,24 @@ pub fn session_input_key(key_code: c_int, is_pressed: bool, modifiers: c_int) ->
     let shift = modifiers & 4 != 0;
     let command = modifiers & 8 != 0;
 
-    if shift && (65..=90).contains(&key_code) {
+    // Ctrl+Command is the private physical-text marker used by the Harmony
+    // client. Route printable keys as raw characters so punctuation can use
+    // the remote macOS input method instead of colliding with VK_RIGHT/VK_INSERT.
+    if ctrl && command && (32..=126).contains(&key_code) {
+        let character = (key_code as u8 as char).to_string();
+        session.input_key(&character, is_pressed, false, alt, ctrl, shift, command);
+        queue_event(
+            "keyboard-input",
+            &format!(
+                "key={key_code};chr={};down={is_pressed};modifiers={modifiers};physical=true",
+                key_code as u8 as char,
+            ),
+            &get_active_peer_id(),
+        );
+        return true;
+    }
+
+    if shift && !ctrl && !alt && !command && (65..=90).contains(&key_code) {
         let mut key_event = KeyEvent::new();
         key_event.set_chr(key_code as u32);
         if is_pressed {
@@ -718,10 +735,6 @@ pub fn session_input_key(key_code: c_int, is_pressed: bool, modifiers: c_int) ->
         );
         return false;
     };
-    let ctrl = modifiers & 1 != 0;
-    let alt = modifiers & 2 != 0;
-    let shift = modifiers & 4 != 0;
-    let command = modifiers & 8 != 0;
     session.input_key(&name, is_pressed, false, alt, ctrl, shift, command);
     queue_event(
         "keyboard-input",
