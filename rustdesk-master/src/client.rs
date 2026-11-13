@@ -1236,6 +1236,8 @@ pub struct AudioHandler {
     #[cfg(not(target_os = "linux"))]
     audio_buffer: AudioBuffer,
     sample_rate: (u32, u32),
+    #[cfg(target_env = "ohos")]
+    harmony_audio_log_counter: u64,
     #[cfg(not(target_os = "linux"))]
     audio_stream: Option<Box<dyn StreamTrait>>,
     channels: u16,
@@ -1398,7 +1400,14 @@ impl AudioHandler {
     }
 
     #[cfg(target_env = "ohos")]
-    fn start_audio(&mut self, _format0: AudioFormat) -> ResultType<()> {
+    fn start_audio(&mut self, format0: AudioFormat) -> ResultType<()> {
+        self.sample_rate = (format0.sample_rate, format0.sample_rate);
+        self.channels = format0.channels as u16;
+        log::info!(
+            "HarmonyOS audio format accepted: sample_rate={}, channels={}",
+            format0.sample_rate,
+            format0.channels
+        );
         Ok(())
     }
 
@@ -1471,6 +1480,40 @@ impl AudioHandler {
     /// Handle audio frame and play it.
     #[inline]
     pub fn handle_frame(&mut self, frame: AudioFrame) {
+        #[cfg(target_env = "ohos")]
+        {
+            if let Some((decoder, buffer)) = self.audio_decoder.as_mut() {
+                match decoder.decode_float(&frame.data, buffer, false) {
+                    Ok(samples_per_channel) => {
+                        let channels = self.channels.max(1);
+                        let sample_count = samples_per_channel * channels as usize;
+                        if sample_count > 0 {
+                            crate::harmony_bridge::core::queue_decoded_audio_frame(
+                                &buffer[..sample_count],
+                                self.sample_rate.0,
+                                channels,
+                            );
+                            self.harmony_audio_log_counter += 1;
+                            if self.harmony_audio_log_counter == 1 ||
+                                self.harmony_audio_log_counter % 100 == 0
+                            {
+                                log::info!(
+                                    "HarmonyOS audio decoded: frames={}, samples={}, rate={}, channels={}",
+                                    self.harmony_audio_log_counter,
+                                    sample_count,
+                                    self.sample_rate.0,
+                                    channels
+                                );
+                            }
+                        }
+                    }
+                    Err(err) => {
+                        log::warn!("HarmonyOS Opus decode failed: {err}");
+                    }
+                }
+            }
+            return;
+        }
         #[cfg(not(target_os = "linux"))]
         if self.audio_stream.is_none() || !self.ready.lock().unwrap().clone() {
             return;

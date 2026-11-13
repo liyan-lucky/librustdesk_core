@@ -2,20 +2,38 @@ use crate::client;
 use crate::client::file_trait::FileManager;
 use crate::client::{Data, Interface, QualityStatus};
 use crate::ui_session_interface::{io_loop, InvokeUiSession, Session};
+use hbb_common::base64;
+use hbb_common::log;
 use hbb_common::config::{self, LanPeers, LocalConfig, PeerConfig};
 use hbb_common::message_proto::*;
 use hbb_common::rendezvous_proto::ConnType;
 use serde_json::json;
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 use std::os::raw::c_int;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex, OnceLock, RwLock};
 use std::time::{SystemTime, UNIX_EPOCH};
 
+extern "C" {
+    fn ARGBScale(
+        src_argb: *const u8,
+        src_stride_argb: i32,
+        src_width: i32,
+        src_height: i32,
+        dst_argb: *mut u8,
+        dst_stride_argb: i32,
+        dst_width: i32,
+        dst_height: i32,
+        filtering: i32,
+    ) -> i32;
+}
+
 static CONNECT_STATE: OnceLock<Mutex<ConnectState>> = OnceLock::new();
 static LOCAL_OPTIONS: OnceLock<Mutex<HashMap<String, String>>> = OnceLock::new();
 static LATEST_VIDEO_FRAME: OnceLock<Mutex<Option<VideoFrameState>>> = OnceLock::new();
 static INCOMING_SCREEN_FRAME: OnceLock<Mutex<Option<IncomingScreenFrameState>>> = OnceLock::new();
+static VIDEO_RENDER_SCALE_PERCENT: AtomicUsize = AtomicUsize::new(100);
+static PENDING_AUDIO_FRAMES: OnceLock<Mutex<VecDeque<QueuedAudioFrame>>> = OnceLock::new();
 static ACTIVE_SESSION: OnceLock<Mutex<Option<Session<HarmonyHandler>>>> = OnceLock::new();
 static FILE_TRANSFER_SESSION: OnceLock<Mutex<Option<Session<HarmonyHandler>>>> = OnceLock::new();
 static ACTIVE_SESSION_PASSWORD: OnceLock<Mutex<String>> = OnceLock::new();
@@ -31,6 +49,8 @@ struct VideoFrameState {
     display: c_int,
     width: usize,
     height: usize,
+    source_width: usize,
+    source_height: usize,
     stride: usize,
     bytes: Vec<u8>,
     timestamp: i64,
@@ -48,6 +68,14 @@ struct IncomingScreenFrameState {
     timestamp: i64,
     format: String,
     frames_seen: u64,
+}
+
+#[derive(Clone, Debug)]
+struct QueuedAudioFrame {
+    sample_rate: u32,
+    channels: u16,
+    timestamp: i64,
+    data_base64: String,
 }
 
 #[derive(Clone, Debug, Default)]
@@ -99,6 +127,7 @@ fn is_harmony_persistent_option(key: &str) -> bool {
     HARMONY_SESSION_DEFAULT_OPTIONS.contains(&key)
         || key == "display-scale-mode"
         || key == "custom-zoom-percent"
+        || key == "video-render-scale"
         || key == "direct-server"
         || key == "direct-access-port"
 }
@@ -109,6 +138,56 @@ fn latest_video_frame() -> &'static Mutex<Option<VideoFrameState>> {
 
 fn incoming_screen_frame() -> &'static Mutex<Option<IncomingScreenFrameState>> {
     INCOMING_SCREEN_FRAME.get_or_init(|| Mutex::new(None))
+}
+
+fn pending_audio_frames() -> &'static Mutex<VecDeque<QueuedAudioFrame>> {
+    PENDING_AUDIO_FRAMES.get_or_init(|| Mutex::new(VecDeque::new()))
+}
+
+const HARMONY_AUDIO_SAMPLE_RATE: u32 = 48_000;
+const HARMONY_AUDIO_CHANNELS: u16 = 1;
+const MAX_PENDING_AUDIO_FRAMES: usize = 50;
+
+/// Queues decoded remote audio for the HarmonyOS AudioRenderer pull loop.
+/// The renderer is fixed to 48 kHz mono S16LE, so resample and downmix here.
+pub(crate) fn queue_decoded_audio_frame(samples: &[f32], sample_rate: u32, channels: u16) {
+    if samples.is_empty() || sample_rate == 0 || channels == 0 {
+        return;
+    }
+    let mut normalized = if sample_rate == HARMONY_AUDIO_SAMPLE_RATE {
+        samples.to_vec()
+    } else {
+        crate::audio_resample(samples, sample_rate, HARMONY_AUDIO_SAMPLE_RATE, channels)
+    };
+    if channels != HARMONY_AUDIO_CHANNELS {
+        normalized = crate::audio_rechannel(
+            normalized,
+            HARMONY_AUDIO_SAMPLE_RATE,
+            HARMONY_AUDIO_SAMPLE_RATE,
+            channels,
+            HARMONY_AUDIO_CHANNELS,
+        );
+    }
+    let pcm: Vec<u8> = normalized
+        .iter()
+        .flat_map(|sample| {
+            let value = (sample.clamp(-1.0, 1.0) * i16::MAX as f32).round() as i16;
+            value.to_le_bytes()
+        })
+        .collect();
+    if pcm.is_empty() {
+        return;
+    }
+    let mut queue = pending_audio_frames().lock().unwrap();
+    if queue.len() >= MAX_PENDING_AUDIO_FRAMES {
+        queue.pop_front();
+    }
+    queue.push_back(QueuedAudioFrame {
+        sample_rate: HARMONY_AUDIO_SAMPLE_RATE,
+        channels: HARMONY_AUDIO_CHANNELS,
+        timestamp: current_timestamp_millis(),
+        data_base64: base64::encode(pcm),
+    });
 }
 
 fn active_session() -> &'static Mutex<Option<Session<HarmonyHandler>>> {
@@ -304,7 +383,21 @@ pub fn pull_session_events_json() -> String {
 
 /// Pulls pending audio frames as a JSON string.
 pub fn pull_audio_frames_json() -> String {
-    "[]".to_owned()
+    let frames: Vec<_> = pending_audio_frames()
+        .lock()
+        .unwrap()
+        .drain(..)
+        .map(|frame| {
+            json!({
+                "sampleRate": frame.sample_rate,
+                "channels": frame.channels,
+                "format": "s16le",
+                "timestamp": frame.timestamp,
+                "dataBase64": frame.data_base64,
+            })
+        })
+        .collect();
+    json!(frames).to_string()
 }
 
 /// Returns the latest video frame metadata as JSON since the given frame ID.
@@ -321,6 +414,8 @@ pub fn get_latest_video_frame_metadata_json(since_frame_id: u64) -> String {
         "display": frame.display,
         "width": frame.width,
         "height": frame.height,
+        "sourceWidth": frame.source_width,
+        "sourceHeight": frame.source_height,
         "stride": frame.stride,
         "bytes": frame.bytes.len(),
         "timestamp": frame.timestamp,
@@ -599,7 +694,24 @@ pub fn session_input_key(key_code: c_int, is_pressed: bool, modifiers: c_int) ->
     let shift = modifiers & 4 != 0;
     let command = modifiers & 8 != 0;
 
-    if shift && (65..=90).contains(&key_code) {
+    // Ctrl+Command is the private physical-text marker used by the Harmony
+    // client. Route printable keys as raw characters so punctuation can use
+    // the remote macOS input method instead of colliding with VK_RIGHT/VK_INSERT.
+    if ctrl && command && (32..=126).contains(&key_code) {
+        let character = (key_code as u8 as char).to_string();
+        session.input_key(&character, is_pressed, false, alt, ctrl, shift, command);
+        queue_event(
+            "keyboard-input",
+            &format!(
+                "key={key_code};chr={};down={is_pressed};modifiers={modifiers};physical=true",
+                key_code as u8 as char,
+            ),
+            &get_active_peer_id(),
+        );
+        return true;
+    }
+
+    if shift && !ctrl && !alt && !command && (65..=90).contains(&key_code) {
         let mut key_event = KeyEvent::new();
         key_event.set_chr(key_code as u32);
         if is_pressed {
@@ -623,10 +735,6 @@ pub fn session_input_key(key_code: c_int, is_pressed: bool, modifiers: c_int) ->
         );
         return false;
     };
-    let ctrl = modifiers & 1 != 0;
-    let alt = modifiers & 2 != 0;
-    let shift = modifiers & 4 != 0;
-    let command = modifiers & 8 != 0;
     session.input_key(&name, is_pressed, false, alt, ctrl, shift, command);
     queue_event(
         "keyboard-input",
@@ -818,6 +926,8 @@ pub fn session_start(
     *active_session_password().lock().unwrap() = password.to_owned();
     clear_connect_events();
     *latest_video_frame().lock().unwrap() = None;
+    pending_audio_frames().lock().unwrap().clear();
+    sync_video_render_scale_from_local_option();
     apply_server_options(server, relay_server, api_server, key);
 
     // Harmony keeps remembered passwords in the application preference store. Clear
@@ -1656,6 +1766,11 @@ pub fn session_get_toggle_option(key: &str) -> bool {
 
 /// Sets a local option value by key.
 pub fn main_set_local_option(key: &str, value: &str) {
+    if key == "video-render-scale" {
+        let percent = value.parse::<usize>().unwrap_or(100).clamp(25, 100);
+        VIDEO_RENDER_SCALE_PERCENT.store(percent, Ordering::Relaxed);
+        log::info!("HarmonyOS video render scale set to {percent}%");
+    }
     local_options()
         .lock()
         .unwrap()
@@ -1893,6 +2008,7 @@ pub fn mark_session_error(message: &str) {
 
 /// Closes the current session.
 pub fn session_close() {
+    pending_audio_frames().lock().unwrap().clear();
     ACTIVE_SESSION_GENERATION.fetch_add(1, Ordering::SeqCst);
     close_file_transfer_session();
     active_session_password().lock().unwrap().clear();
@@ -1932,10 +2048,78 @@ pub fn session_login(password: &str, _remember: bool) -> bool {
     true
 }
 
+fn rgba_row_stride(width: usize, align: usize) -> usize {
+    let packed = width.saturating_mul(4);
+    if align <= 1 {
+        packed
+    } else {
+        (packed + align - 1) & !(align - 1)
+    }
+}
+
+fn scale_rgba_frame(rgba: &scrap::ImageRgb, target_w: usize, target_h: usize) -> Option<(Vec<u8>, usize)> {
+    if matches!(rgba.fmt, scrap::ImageFormat::Raw) {
+        return None;
+    }
+    let src_stride = rgba_row_stride(rgba.w, rgba.align);
+    if rgba.raw.len() < src_stride.saturating_mul(rgba.h) {
+        return None;
+    }
+    let dst_stride = target_w.saturating_mul(4);
+    let mut bytes = vec![0u8; dst_stride.saturating_mul(target_h)];
+    let result = unsafe {
+        ARGBScale(
+            rgba.raw.as_ptr(),
+            src_stride as i32,
+            rgba.w as i32,
+            rgba.h as i32,
+            bytes.as_mut_ptr(),
+            dst_stride as i32,
+            target_w as i32,
+            target_h as i32,
+            2, // kFilterBilinear
+        )
+    };
+    if result == 0 {
+        Some((bytes, dst_stride))
+    } else {
+        None
+    }
+}
+
+fn sync_video_render_scale_from_local_option() {
+    let percent = get_local_option("video-render-scale")
+        .parse::<usize>()
+        .unwrap_or(100)
+        .clamp(25, 100);
+    VIDEO_RENDER_SCALE_PERCENT.store(percent, Ordering::Relaxed);
+}
+
 fn publish_real_video_frame(display: c_int, rgba: &scrap::ImageRgb) {
     if rgba.w == 0 || rgba.h == 0 || rgba.raw.is_empty() {
         return;
     }
+    let scale_percent = VIDEO_RENDER_SCALE_PERCENT.load(Ordering::Relaxed).clamp(25, 100);
+    let (frame_width, frame_height, frame_stride, frame_bytes) = if scale_percent < 100 {
+        let target_w = ((rgba.w * scale_percent + 50) / 100).max(2);
+        let target_h = ((rgba.h * scale_percent + 50) / 100).max(2);
+        match scale_rgba_frame(rgba, target_w, target_h) {
+            Some((bytes, stride)) => (target_w, target_h, stride, bytes),
+            None => (
+                rgba.w,
+                rgba.h,
+                rgba_row_stride(rgba.w, rgba.align),
+                rgba.raw.clone(),
+            ),
+        }
+    } else {
+        (
+            rgba.w,
+            rgba.h,
+            rgba_row_stride(rgba.w, rgba.align),
+            rgba.raw.clone(),
+        )
+    };
     let mut guard = latest_video_frame().lock().unwrap();
     let next_frame_id = guard.as_ref().map(|frame| frame.frame_id + 1).unwrap_or(1);
     let format = match rgba.fmt {
@@ -1944,18 +2128,15 @@ fn publish_real_video_frame(display: c_int, rgba: &scrap::ImageRgb) {
         scrap::ImageFormat::Raw => "bgra",
     }
     .to_owned();
-    let stride = if rgba.align > 0 {
-        rgba.align
-    } else {
-        rgba.w * 4
-    };
     *guard = Some(VideoFrameState {
         frame_id: next_frame_id,
         display,
-        width: rgba.w,
-        height: rgba.h,
-        stride,
-        bytes: rgba.raw.clone(),
+        width: frame_width,
+        height: frame_height,
+        source_width: rgba.w,
+        source_height: rgba.h,
+        stride: frame_stride,
+        bytes: frame_bytes,
         timestamp: current_timestamp_millis(),
         format,
     });
